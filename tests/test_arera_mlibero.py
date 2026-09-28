@@ -20,7 +20,7 @@ def test_mlibero_fixture_parses_expected_counts():
     rows = _parsed()
     offers = [r for r in rows if not isinstance(r, Excluded)]
     excluded = [r for r in rows if isinstance(r, Excluded)]
-    assert len(offers) == 12
+    assert len(offers) == 13
     assert len(excluded) == 4
     assert all(o.customer.value == "domestic" for o in offers)
 
@@ -39,11 +39,11 @@ def test_mlibero_unsupported_fasce_excluded():
 
 
 def test_mlibero_non_domestic_excluded_and_counted():
-    # 16 <offerta> elements in the fixture; every one is parsed into either
+    # 17 <offerta> elements in the fixture; every one is parsed into either
     # an Offer or an Excluded -- the non-domestic row (TIPO_CLIENTE=02) is
     # never silently dropped, so it never reaches the catalogue.
     rows = _parsed()
-    assert len(rows) == 16
+    assert len(rows) == 17
     excluded = [r for r in rows if isinstance(r, Excluded)]
     assert any("non domestica" in r.reason for r in excluded)
     offers = [r for r in rows if not isinstance(r, Excluded)]
@@ -154,3 +154,33 @@ def test_interval_periodo_validita_excludes_with_guardrail_reason():
     reason = _excluded_reason("TEST_GUARDRAIL_PERIODOVALIDITA_0001")
     assert "elemento di prezzo non gestito" in reason
     assert "PeriodoValidita" in reason
+
+
+def test_mono_fixed_offer_with_only_macroarea02_prices_via_extras():
+    """No MACROAREA 04/06 at all (whole energy price filed under
+    MACROAREA 02, e.g. real offer 000742ESFML01XXSICREFIX260930D01):
+    allow energy_price = 0 for "mono" and price it via per_kwh_extras_eur
+    instead (same annual cost, no losses either way).
+    """
+    offer = _offer("TEST_MACROAREA02_ONLY_FIXED_0001")
+    assert offer.energy_price_eur_kwh == {"mono": 0.0}
+    assert offer.per_kwh_extras_eur == pytest.approx(0.154)
+    assert offer.fixed_fee_eur_year == pytest.approx(210.0)
+
+    from datetime import date
+
+    from bestbill.core.calculator import estimate_annual_cost
+    from bestbill.core.models import ConsumptionProfile, MonthlyConsumption, PunSeries
+
+    months = []
+    for i in range(12):
+        year = 2024 + (9 + i - 1) // 12
+        month = (9 + i - 1) % 12 + 1
+        months.append(MonthlyConsumption(month=date(year, month, 1), kwh=225.0))
+    profile = ConsumptionProfile(months=months)
+    cost = estimate_annual_cost(offer, profile, PunSeries(values={}))
+
+    # 2700 kWh * 0.154 (per_kwh_extras, no losses) + 210 (fixed fee) +
+    # 2700 * 0.024 (cdispd dispatching, no losses)
+    expected = 2700 * 0.154 + 210 + 2700 * 0.024
+    assert cost == pytest.approx(expected, abs=1e-6)

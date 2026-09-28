@@ -537,14 +537,25 @@ def parse_offerta(el: ET.Element, params: Parameters) -> ParsedOffer:
     )
     if price_type is PriceType.FIXED:
         combined_energy_keys = set(energy_price) | set(energy_price_tiers)
-        if combined_energy_keys != expected_keys:
+        if not combined_energy_keys and band_structure is BandStructure.MONO:
+            # No MACROAREA 04/06 (energy price) component at all: the whole
+            # energy price was filed under MACROAREA 02 instead (observed on
+            # real offers, e.g. "Prezzo Energia Fisso" -- docs/arera-data.md),
+            # already priced via per_kwh_extras_eur on total kWh with no
+            # losses -- the same cost a mono energy_price would produce.
+            # Only safe for MONO: a banded (F1/F2/F3) MACROAREA 02-only offer
+            # would need band-weighted extras, not this flat average, so it
+            # still excludes below.
+            energy_price = {"mono": 0.0}
+        elif combined_energy_keys != expected_keys:
             return Excluded(
                 offer_id,
                 f"prezzi energia incompleti per {band_structure!r}: "
                 f"{sorted(combined_energy_keys)}",
             )
-        for key in expected_keys - set(energy_price):
-            energy_price[key] = 0.0
+        else:
+            for key in expected_keys - set(energy_price):
+                energy_price[key] = 0.0
     if not spread:
         spread = dict.fromkeys(expected_keys, 0.0)
     elif set(spread) != expected_keys:

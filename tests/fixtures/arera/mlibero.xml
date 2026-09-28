@@ -1486,4 +1486,68 @@
             <LIMITANTE>02</LIMITANTE>
         </CondizioniContrattuali>
     </offerta>
+    <offerta>
+        <IdentificativiOfferta>
+            <PIVA_UTENTE>00000000003</PIVA_UTENTE>
+            <COD_OFFERTA>TEST_MACROAREA02_ONLY_FIXED_0001</COD_OFFERTA>
+        </IdentificativiOfferta>
+        <DettaglioOfferta>
+            <TIPO_MERCATO>01</TIPO_MERCATO>
+            <OFFERTA_SINGOLA>SI</OFFERTA_SINGOLA>
+            <TIPO_CLIENTE>01</TIPO_CLIENTE>
+            <TIPO_OFFERTA>01</TIPO_OFFERTA>
+            <TIPOLOGIA_ATT_CONTR>01</TIPOLOGIA_ATT_CONTR>
+            <NOME_OFFERTA>TEST Prezzo Energia Fisso su MACROAREA 02</NOME_OFFERTA>
+            <DESCRIZIONE>Fixture: fixed offer with no MACROAREA 04/06, energy price filed under MACROAREA 02</DESCRIZIONE>
+            <DURATA>12</DURATA>
+            <GARANZIE>NO</GARANZIE>
+            <ModalitaAttivazione>
+                <MODALITA>01</MODALITA>
+            </ModalitaAttivazione>
+            <Contatti>
+                <URL_SITO_VENDITORE>https://example.invalid/</URL_SITO_VENDITORE>
+            </Contatti>
+        </DettaglioOfferta>
+        <ValiditaOfferta>
+            <DATA_INIZIO>02/09/2026_00:00:00</DATA_INIZIO>
+            <DATA_FINE>30/09/2026_00:00:00</DATA_FINE>
+        </ValiditaOfferta>
+        <MetodoPagamento>
+            <MODALITA_PAGAMENTO>01</MODALITA_PAGAMENTO>
+        </MetodoPagamento>
+        <TipoPrezzo>
+            <TIPOLOGIA_FASCE>01</TIPOLOGIA_FASCE>
+        </TipoPrezzo>
+        <Dispacciamento>
+            <TIPO_DISPACCIAMENTO>14</TIPO_DISPACCIAMENTO>
+            <NOME>CdispD</NOME>
+        </Dispacciamento>
+        <ComponenteImpresa>
+            <NOME>Corrispettivo di commercializzazione</NOME>
+            <DESCRIZIONE>Corrispettivo di commercializzazione</DESCRIZIONE>
+            <TIPOLOGIA>01</TIPOLOGIA>
+            <MACROAREA>01</MACROAREA>
+            <IntervalloPrezzi>
+                <PREZZO>210.0</PREZZO>
+                <UNITA_MISURA>01</UNITA_MISURA>
+            </IntervalloPrezzi>
+        </ComponenteImpresa>
+        <ComponenteImpresa>
+            <NOME>Prezzo Energia Fisso</NOME>
+            <DESCRIZIONE>Prezzo Energia Fisso</DESCRIZIONE>
+            <TIPOLOGIA>01</TIPOLOGIA>
+            <MACROAREA>02</MACROAREA>
+            <IntervalloPrezzi>
+                <FASCIA_COMPONENTE>01</FASCIA_COMPONENTE>
+                <PREZZO>0.154</PREZZO>
+                <UNITA_MISURA>03</UNITA_MISURA>
+            </IntervalloPrezzi>
+        </ComponenteImpresa>
+        <CondizioniContrattuali>
+            <TIPOLOGIA_CONDIZIONE>99</TIPOLOGIA_CONDIZIONE>
+            <ALTRO>MODALITA' DI RINNOVO</ALTRO>
+            <DESCRIZIONE>Rinnovo a prezzo variabile.</DESCRIZIONE>
+            <LIMITANTE>02</LIMITANTE>
+        </CondizioniContrattuali>
+    </offerta>
 </ListaOfferteMercatoLibero>

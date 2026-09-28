@@ -146,9 +146,22 @@ excluded with reason "riferita a Maggior Tutela":
 - **MACROAREA 02 can also hold the actual energy price** (observed: a fixed
   offer named its MACROAREA 02 component "Sales Price" / "Prezzo Energia",
   banded by `FASCIA_COMPONENTE`, with no MACROAREA 04/06 component at all).
-  The importer keeps the brief's provisional default (02 → per_kwh_extras),
-  so offers like this are currently excluded as "prezzi energia
-  incompleti" — flagged in `policy.py` for the pricing-semantics review.
+  **Fixed 2026-09-28**: for a `mono` (monorario) fixed offer with no
+  MACROAREA 04/06 component at all, `energy_price_eur_kwh["mono"]`
+  defaults to `0.0` and the whole price is priced via
+  `per_kwh_extras_eur` instead (already routed there by
+  `classify_component`, MACROAREA 02 → `PER_KWH_EXTRAS`) -- same annual
+  cost, no losses either way (fixed offers never get losses). Confirmed
+  on 17 real domestic offers (all `mono`, e.g. "E.CO Luce Prezzo Sicuro
+  Link" `000742ESFML01XXSICREFIX260930D01`), previously excluded as
+  "prezzi energia incompleti". Deliberately **not** extended to banded
+  (F1/F2/F3 or F1/F23) MACROAREA-02-only offers: `per_kwh_extras_eur` is
+  a flat, unweighted average of every MACROAREA 02 row
+  (`bestbill.arera.mlibero._parse_componenti`), which would misprice a
+  banded offer whose bands don't share the same consumption weight as a
+  simple average assumes; no such offer was observed in the real
+  catalogue, so those still exclude with "prezzi energia incompleti"
+  rather than guess.
 
 ## Consumption-tiered prices and discounts (bug fixed 2026-09-28)
 The catalogue used to price a discount or a component's whole annual kWh
