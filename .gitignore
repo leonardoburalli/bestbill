@@ -25,3 +25,7 @@ Output/
 frontend/node_modules/
 frontend/dist/
 catalog/*.sqlite
+
+# Development plans (local only)
+PLAN.md
+PLAN.v*.md
