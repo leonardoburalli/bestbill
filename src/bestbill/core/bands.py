@@ -8,7 +8,8 @@ from bestbill.core.models import Band, BandStructure, MonthlyConsumption
 
 #: Standard household time-of-use split, used when the user hasn't entered
 #: their own F1/F2/F3 breakdown from the bill.
-#: TODO(source): confirm with ARERA reference split (placeholder values).
+#: Source: Acquirente Unico / ARERA, "Regole per il calcolo della spesa annua
+#: stimata" v4.0 (Feb 2026), §3 — domestic customer profile (Del. 51/2018/R/com).
 DEFAULT_HOUSEHOLD_SPLIT: dict[Band, float] = {
     Band.F1: 0.33,
     Band.F2: 0.31,
