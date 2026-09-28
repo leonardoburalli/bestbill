@@ -142,9 +142,7 @@ def parse_placet_rows(text: str) -> Iterator[ParsedRow]:
                 customer=CustomerType.DOMESTIC,
                 residency=Residency.ANY,
                 geo=_geo(row),
-                losses_applied_to_energy=policy.losses_applied_to_energy(
-                    OfferSource.PLACET, price_type
-                ),
+                losses_mode=policy.losses_mode(OfferSource.PLACET, price_type),
                 valid_from=_to_date(row.get("data_inizio", "")),
                 valid_to=_to_date(row.get("data_fine", "")),
             )

@@ -15,6 +15,7 @@ from bestbill.core.models import (
     Discount,
     Flat,
     Historical,
+    LossesMode,
     Offer,
     OfferResult,
     PriceType,
@@ -162,8 +163,27 @@ def _is_eligible(
     return None
 
 
-def _energy_multiplier(offer: Offer) -> float:
-    return 1.0 + policy.LOSSES if offer.losses_applied_to_energy else 1.0
+def _loss_multipliers(offer: Offer) -> tuple[float, float]:
+    """Return ``(index_multiplier, spread_multiplier)`` for this offer's
+    ``losses_mode`` (see ``bestbill.core.models.LossesMode`` and
+    ``bestbill.arera.policy``, verified against AU "Regole per il calcolo
+    della spesa annua stimata" v4.0):
+
+    - NONE: no losses anywhere (1.0, 1.0) -- fixed offers of both ARERA
+      sources, and every custom/legacy offer.
+    - INDEX_ONLY: losses on the index only, not the spread -- mercato
+      libero variable offers.
+    - INDEX_AND_SPREAD: losses on (index + spread) together -- PLACET
+      variable offers (PINGM + alpha).
+    """
+    factor = 1.0 + policy.LOSSES
+    if offer.losses_mode is LossesMode.NONE:
+        return 1.0, 1.0
+    if offer.losses_mode is LossesMode.INDEX_ONLY:
+        return factor, 1.0
+    if offer.losses_mode is LossesMode.INDEX_AND_SPREAD:
+        return factor, factor
+    raise ValueError(f"unsupported losses_mode: {offer.losses_mode!r}")
 
 
 def _priced_discounts(offer: Offer) -> list[Discount]:
@@ -190,7 +210,7 @@ def _offer_cost(
     total_kwh: float,
     committed_power_kw: float,
 ) -> float:
-    multiplier = _energy_multiplier(offer)
+    index_multiplier, spread_multiplier = _loss_multipliers(offer)
     energy_cost = 0.0
     if offer.price_type is PriceType.FIXED:
         for band_kwh in monthly_band_kwh:
@@ -198,7 +218,9 @@ def _offer_cost(
                 price = offer.energy_price_eur_kwh[band]
                 spread = offer.spread_eur_kwh[band]
                 energy_cost += kwh * (
-                    (price + spread) * multiplier + offer.per_kwh_extras_eur
+                    price * index_multiplier
+                    + spread * spread_multiplier
+                    + offer.per_kwh_extras_eur
                 )
     else:
         assert pun_by_month is not None
@@ -207,7 +229,9 @@ def _offer_cost(
             for band, kwh in band_kwh.items():
                 spread = offer.spread_eur_kwh[band]
                 energy_cost += kwh * (
-                    (pun_value + spread) * multiplier + offer.per_kwh_extras_eur
+                    pun_value * index_multiplier
+                    + spread * spread_multiplier
+                    + offer.per_kwh_extras_eur
                 )
 
     fees = offer.fixed_fee_eur_year + offer.power_fee_eur_kw_year * committed_power_kw
@@ -231,13 +255,13 @@ def _break_even_pun(
     """
     if best_fixed_cost is None or total_kwh <= 0:
         return None
-    multiplier = _energy_multiplier(offer)
+    index_multiplier, spread_multiplier = _loss_multipliers(offer)
     rest = offer.fixed_fee_eur_year + offer.power_fee_eur_kw_year * committed_power_kw
     spread_energy_cost = 0.0
     for band_kwh in monthly_band_kwh:
         for band, kwh in band_kwh.items():
             spread = offer.spread_eur_kwh[band]
-            spread_energy_cost += kwh * spread * multiplier
+            spread_energy_cost += kwh * spread * spread_multiplier
             rest += kwh * offer.per_kwh_extras_eur
     rest += spread_energy_cost
     # Discounts are priced against the realised energy cost; approximate it
@@ -249,7 +273,7 @@ def _break_even_pun(
         for d in _priced_discounts(offer)
     )
     rest -= discount_total
-    return (best_fixed_cost - rest) / (total_kwh * multiplier)
+    return (best_fixed_cost - rest) / (total_kwh * index_multiplier)
 
 
 def estimate_annual_cost(

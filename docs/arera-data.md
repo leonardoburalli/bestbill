@@ -68,7 +68,12 @@ F1 33 %, F2 31 %, F3 36 % (F23 = 67 %). ARERA reference customer ("cliente tipo"
 - Geography: ~9 % of rows restrict by semicolon-separated ISTAT codes; blank means national.
 
 ## Methodology points that affect our engine
-- **Network losses**: the portal applies `(1 + λ)` with λ = 10 % (low voltage) to index + spread for variable offers. Verify whether prices already include losses, per source and per component, before pricing.
+- **Network losses**: **verified** against AU "Regole per il calcolo della
+  spesa annua stimata" v4.0. Fixed offers (both ARERA sources) get **no**
+  losses. Mercato libero variable offers apply `(1 + λ)` with λ = 10 % to
+  the **index only**, not the spread. PLACET variable offers apply
+  `(1 + λ)` to **(PINGM + alpha) together**. See
+  `bestbill.core.models.LossesMode` and `bestbill.arera.policy.losses_mode()`.
 - **Unconditional discounts** in the first 12 months reduce the estimate. Conditional discounts are only displayed.
 - **Dispatching components** (C_disp/C_dispD, capacity market, …) are supplier-side €/kWh or €/year charges and belong in the supplier component.
 - **Resident/non-resident**: needed for offer eligibility (and later for excise and system charges).

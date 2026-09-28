@@ -21,7 +21,7 @@ def test_placet_fixed_f1f23_offer_fields():
     assert offer.band_structure is BandStructure.F1F23
     assert offer.energy_price_eur_kwh == {"F1": 0.385, "F23": 0.385}
     assert offer.fixed_fee_eur_year == 300.0
-    assert offer.losses_applied_to_energy is True
+    assert offer.losses_mode.value == "none"
 
 
 def test_placet_variable_offer_without_p_vol_defaults_to_mono_spread():
@@ -33,6 +33,8 @@ def test_placet_variable_offer_without_p_vol_defaults_to_mono_spread():
     assert offer.energy_price_eur_kwh == {}
     assert offer.spread_eur_kwh == {"mono": 0.045}
     assert offer.fixed_fee_eur_year == 300.0
+    # PLACET variable offers apply losses to (PINGM + alpha) together.
+    assert offer.losses_mode.value == "index_and_spread"
 
 
 def test_placet_geo_restricted_offer_has_geo():

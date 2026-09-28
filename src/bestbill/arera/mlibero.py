@@ -381,9 +381,7 @@ def parse_offerta(el: ET.Element) -> ParsedOffer | None:
             customer=CustomerType.DOMESTIC,
             residency=_residency(dettaglio),
             geo=_geo(el),
-            losses_applied_to_energy=policy.losses_applied_to_energy(
-                OfferSource.MLIBERO, price_type
-            ),
+            losses_mode=policy.losses_mode(OfferSource.MLIBERO, price_type),
             consumption_min_kwh=consumo_min,
             consumption_max_kwh=consumo_max,
             valid_from=valid_from,

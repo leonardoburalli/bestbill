@@ -6,10 +6,14 @@ calcolo della spesa annua stimata" v4.0 PDF (see docs/arera-data.md). Parsers
 module instead of hard-coding pricing decisions, so a single review can
 adjust every rule without touching parser code.
 
+Verified against the official v4.0 rules:
+- **Network losses (LOSSES)**: fixed offers (both ARERA sources) get NO
+  losses. Mercato libero variable offers apply losses to the index only,
+  not the spread. PLACET variable offers apply losses to (PINGM + alpha)
+  together. See ``bestbill.core.models.LossesMode`` and ``losses_mode()``
+  below.
+
 Open questions for the pricing-semantics review (flag in the PR):
-- Network losses (LOSSES): applied to (index + spread) for variable offers
-  and to the energy price for fixed offers, for both PLACET and mercato
-  libero. Verify per source/price_type combination.
 - Percent-unit discounts (``DiscountUnit.PERCENT``): the sample data has at
   least one PREZZO of ``100`` under UNITA_MISURA ``06`` (%), which looks
   like a data-quality issue rather than a "100% discount" -- verify the
@@ -42,13 +46,15 @@ from bestbill.core.models import (
     Discount,
     DiscountUnit,
     DiscountValidity,
+    LossesMode,
     OfferSource,
     PriceType,
 )
 
-#: Network losses applied at low voltage, art. 13.2 methodology (see
-#: docs/arera-data.md "Methodology points"). Provisional: applied to energy
-#: terms only (index/price + spread), never to fees or extras.
+#: Network losses applied at low voltage, art. 13.2 methodology, verified
+#: against AU "Regole per il calcolo della spesa annua stimata" v4.0 (see
+#: docs/arera-data.md "Methodology points" and ``losses_mode()`` below for
+#: which offers/components it applies to).
 LOSSES = 0.10
 
 #: ARERA reference domestic customer ("cliente tipo").
@@ -74,14 +80,21 @@ SUPPORTED_TIPOLOGIA_FASCE = frozenset(
 _DISPBT_FIXED_FEE_CODE = "13"
 
 
-def losses_applied_to_energy(source: OfferSource, price_type: PriceType) -> bool:
-    """Whether the engine should multiply this offer's energy terms by
-    (1 + LOSSES). Provisional default: yes, for every ARERA source and
-    price type (see module docstring). Custom (legacy Excel) offers never
-    call this function and keep their historical, loss-free pricing.
+def losses_mode(source: OfferSource, price_type: PriceType) -> LossesMode:
+    """How network losses apply to this offer's energy terms. Verified
+    against AU "Regole per il calcolo della spesa annua stimata" v4.0:
+    fixed offers (either source) get no losses; mercato libero variable
+    offers apply losses to the index only; PLACET variable offers apply
+    losses to (index + spread) together. Custom (legacy Excel) offers
+    never call this function and keep their historical, loss-free pricing.
     """
-    del source, price_type  # provisional: same for every combination today
-    return True
+    if price_type is PriceType.FIXED:
+        return LossesMode.NONE
+    if source is OfferSource.MLIBERO:
+        return LossesMode.INDEX_ONLY
+    if source is OfferSource.PLACET:
+        return LossesMode.INDEX_AND_SPREAD
+    raise ValueError(f"unsupported source for losses_mode: {source!r}")
 
 
 def idx_is_supported(idx_code: str) -> bool:

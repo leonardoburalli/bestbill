@@ -9,6 +9,7 @@ from bestbill.core.models import (
     DiscountUnit,
     DiscountValidity,
     GeoRestriction,
+    LossesMode,
     Offer,
     Residency,
 )
@@ -16,26 +17,45 @@ from bestbill.core.models import (
 from .helpers import fixed_offer, make_profile, make_pun, variable_offer
 
 
-def test_losses_multiply_energy_term_for_variable_offer():
+def test_losses_index_only_multiplies_pun_not_spread():
     profile = make_profile([100.0] * 12)
     pun = make_pun([0.10] * 12)
-    offer = variable_offer(spread=0.02, fee=0.0, losses_applied_to_energy=True)
+    offer = variable_offer(spread=0.02, fee=0.0, losses_mode=LossesMode.INDEX_ONLY)
 
     comparison = compare([offer], profile, pun)
 
-    # (pun + spread) * 1.10, no extras
+    # pun * 1.10 + spread (spread untouched) -- mercato libero variable rule
+    expected = 1200.0 * (0.10 * 1.10 + 0.02)
+    assert comparison.results[0].cost_eur == pytest.approx(expected)
+
+
+def test_losses_index_and_spread_multiplies_both():
+    profile = make_profile([100.0] * 12)
+    pun = make_pun([0.10] * 12)
+    offer = variable_offer(
+        spread=0.02, fee=0.0, losses_mode=LossesMode.INDEX_AND_SPREAD
+    )
+
+    comparison = compare([offer], profile, pun)
+
+    # (pun + spread) * 1.10 -- PLACET variable rule (PINGM + alpha)
     expected = 1200.0 * (0.12 * 1.10)
     assert comparison.results[0].cost_eur == pytest.approx(expected)
 
 
-def test_losses_multiply_energy_term_for_fixed_offer():
+def test_fixed_offers_never_get_losses_even_if_mode_set():
     profile = make_profile([100.0] * 12)
     pun = make_pun([0.10] * 12)
-    offer = fixed_offer(price=0.15, spread=0.0, fee=0.0, losses_applied_to_energy=True)
+    # Per the verified v4.0 rules, fixed offers get NO losses; the policy
+    # module never sets a losses_mode other than NONE for fixed offers.
+    # This test documents the engine's behaviour if it were: it always
+    # respects the offer's own losses_mode (the "no losses on fixed"
+    # decision lives in policy.losses_mode(), not the engine).
+    offer = fixed_offer(price=0.15, spread=0.0, fee=0.0, losses_mode=LossesMode.NONE)
 
     comparison = compare([offer], profile, pun)
 
-    expected = 1200.0 * (0.15 * 1.10)
+    expected = 1200.0 * 0.15
     assert comparison.results[0].cost_eur == pytest.approx(expected)
 
 
@@ -46,7 +66,7 @@ def test_per_kwh_extras_not_multiplied_by_losses():
         price=0.10,
         spread=0.0,
         fee=0.0,
-        losses_applied_to_energy=True,
+        losses_mode=LossesMode.INDEX_AND_SPREAD,
         per_kwh_extras_eur=0.02,
     )
 
@@ -242,5 +262,5 @@ def test_custom_offer_defaults_keep_legacy_behaviour():
     assert offer.customer.value == "domestic"
     assert offer.residency.value == "any"
     assert offer.geo is None
-    assert offer.losses_applied_to_energy is False
+    assert offer.losses_mode.value == "none"
     assert offer.discounts == []

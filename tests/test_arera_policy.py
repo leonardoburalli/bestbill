@@ -144,10 +144,26 @@ def test_discount_annual_value_zero_when_not_priced():
     )
 
 
-def test_losses_applied_to_energy_is_provisionally_true_everywhere():
-    from bestbill.core.models import OfferSource
+def test_losses_mode_fixed_offers_never_get_losses():
+    from bestbill.core.models import LossesMode, OfferSource
 
-    assert policy.losses_applied_to_energy(OfferSource.PLACET, PriceType.FIXED)
-    assert policy.losses_applied_to_energy(OfferSource.PLACET, PriceType.VARIABLE)
-    assert policy.losses_applied_to_energy(OfferSource.MLIBERO, PriceType.FIXED)
-    assert policy.losses_applied_to_energy(OfferSource.MLIBERO, PriceType.VARIABLE)
+    assert policy.losses_mode(OfferSource.PLACET, PriceType.FIXED) is LossesMode.NONE
+    assert policy.losses_mode(OfferSource.MLIBERO, PriceType.FIXED) is LossesMode.NONE
+
+
+def test_losses_mode_mlibero_variable_is_index_only():
+    from bestbill.core.models import LossesMode, OfferSource
+
+    assert (
+        policy.losses_mode(OfferSource.MLIBERO, PriceType.VARIABLE)
+        is LossesMode.INDEX_ONLY
+    )
+
+
+def test_losses_mode_placet_variable_is_index_and_spread():
+    from bestbill.core.models import LossesMode, OfferSource
+
+    assert (
+        policy.losses_mode(OfferSource.PLACET, PriceType.VARIABLE)
+        is LossesMode.INDEX_AND_SPREAD
+    )

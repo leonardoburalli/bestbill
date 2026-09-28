@@ -20,6 +20,7 @@ __all__ = [
     "Residency",
     "GeoLevel",
     "GeoRestriction",
+    "LossesMode",
     "DiscountValidity",
     "DiscountUnit",
     "Discount",
@@ -124,6 +125,24 @@ class GeoRestriction(BaseModel):
         return False
 
 
+class LossesMode(StrEnum):
+    """How the engine applies network losses (1 + LOSSES, see
+    ``bestbill.arera.policy``) to an offer's energy terms. Verified against
+    AU "Regole per il calcolo della spesa annua stimata" v4.0:
+
+    - ``NONE``: no losses (fixed offers of both ARERA sources; every
+      custom/legacy offer).
+    - ``INDEX_ONLY``: losses apply to the index only, not the spread
+      (mercato libero variable offers).
+    - ``INDEX_AND_SPREAD``: losses apply to (index + spread) together
+      (PLACET variable offers, i.e. PINGM + alpha).
+    """
+
+    NONE = "none"
+    INDEX_ONLY = "index_only"
+    INDEX_AND_SPREAD = "index_and_spread"
+
+
 class DiscountValidity(StrEnum):
     """ARERA Sconto/VALIDITA."""
 
@@ -212,10 +231,11 @@ class Offer(BaseModel):
     residency: Residency = Residency.ANY
     #: ARERA ZoneOfferta; ``None`` means a national offer.
     geo: GeoRestriction | None = None
-    #: Whether the engine must multiply energy terms (index/price + spread)
-    #: by (1 + LOSSES). Custom (legacy Excel) offers default to False to
-    #: keep their historical, loss-free pricing.
-    losses_applied_to_energy: bool = False
+    #: How the engine applies network losses (1 + LOSSES) to this offer's
+    #: energy terms; see ``bestbill.arera.policy`` and ``LossesMode``.
+    #: Custom (legacy Excel) offers default to NONE to keep their
+    #: historical, loss-free pricing.
+    losses_mode: LossesMode = LossesMode.NONE
 
     consumption_min_kwh: float | None = Field(default=None, ge=0)
     consumption_max_kwh: float | None = Field(default=None, ge=0)
