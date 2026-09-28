@@ -16,6 +16,17 @@ __all__ = [
     "BandStructure",
     "PriceType",
     "OfferSource",
+    "CustomerType",
+    "Residency",
+    "GeoLevel",
+    "GeoRestriction",
+    "LossesMode",
+    "DiscountValidity",
+    "DiscountUnit",
+    "Discount",
+    "ConsumptionTier",
+    "SupplierNameSource",
+    "BreakEvenStatus",
     "Offer",
     "MonthlyConsumption",
     "ConsumptionProfile",
@@ -24,10 +35,16 @@ __all__ = [
     "Scaled",
     "Flat",
     "Scenario",
+    "CostBreakdown",
     "OfferResult",
     "Assumptions",
     "Comparison",
 ]
+
+#: Label for the cost this engine estimates -- shown next to every total in
+#: the CLI/API/assumptions. Never the full electricity bill (see
+#: ``Offer``'s and ``compare()``'s docstrings).
+COST_LABEL = "costo materia energia (IVA esclusa)"
 
 
 class Band(StrEnum):
@@ -66,6 +83,203 @@ class OfferSource(StrEnum):
     CUSTOM = "custom"
 
 
+class CustomerType(StrEnum):
+    """ARERA TIPO_CLIENTE: 01 domestic, 02 non-domestic."""
+
+    DOMESTIC = "domestic"
+    NON_DOMESTIC = "non_domestic"
+
+
+class SupplierNameSource(StrEnum):
+    """Where an offer's ``supplier`` display name came from, in resolution
+    order (see ``bestbill.arera.operators`` and ``bestbill.catalog.build``):
+
+    - ``ARERA``: the ARERA "Ricerca operatori" export (RAGIONE SOCIALE),
+      matched by VAT (PARTITA IVA).
+    - ``PLACET``: a PLACET row's ``denominazione`` for the same VAT
+      (mercato libero offers only -- PLACET offers always use ``ARERA``
+      or their own ``denominazione`` directly is treated as ``PLACET``).
+    - ``DOMAIN``: the retailer's website domain, from
+      ``URL_SITO_VENDITORE``, stripped of scheme/``www.``/path.
+    - ``VAT``: last resort, ``"P.IVA <vat>"``.
+    """
+
+    ARERA = "arera"
+    PLACET = "placet"
+    DOMAIN = "domain"
+    VAT = "vat"
+
+
+class BreakEvenStatus(StrEnum):
+    """Classifies a variable offer's break-even PUN against the cheapest
+    eligible fixed offer (see ``bestbill.core.calculator._break_even_pun``):
+
+    - ``CHEAPER_BELOW``: the normal case -- the variable offer is cheaper
+      than the best fixed offer for PUN values below the break-even point
+      (and more expensive above it).
+    - ``NEVER_CHEAPER``: the break-even PUN is <= 0 -- the variable offer
+      is never cheaper than the best fixed offer at any non-negative PUN.
+    - ``ALWAYS_CHEAPER``: the variable offer's cost slope (kWh × loss
+      multiplier) is <= 0, so it can't be compared as a break-even point;
+      in practice this only happens when there's no fixed offer to break
+      even against or the variable offer has zero/negative consumption
+      exposure -- kept for completeness, see the calculator docstring.
+    """
+
+    CHEAPER_BELOW = "cheaper_below"
+    NEVER_CHEAPER = "never_cheaper"
+    ALWAYS_CHEAPER = "always_cheaper"
+
+
+class Residency(StrEnum):
+    """ARERA DOMESTICO_RESIDENTE: who the offer is restricted to."""
+
+    RESIDENTS = "residents"
+    NON_RESIDENTS = "non_residents"
+    ANY = "any"
+
+
+class GeoLevel(StrEnum):
+    """ARERA ZoneOfferta levels."""
+
+    REGIONE = "regione"
+    PROVINCIA = "provincia"
+    COMUNE = "comune"
+
+
+class GeoRestriction(BaseModel):
+    """An offer's geographic restriction: national if all sets are empty,
+    otherwise the offer is only available where at least one code matches.
+
+    Matching a user's ``istat_comune`` (6-digit ISTAT code) against
+    ``province`` uses the first 3 digits of the comune code as the
+    provincia code, which holds for the classic ISTAT numbering
+    (*inferred*, not verified against an authoritative comune->provincia
+    table). ``regione`` restrictions cannot be verified from the comune
+    code alone (no arithmetic derivation), so a comune that only matches a
+    regione-restricted offer is treated as **not** eligible rather than
+    risk showing an unavailable offer (documented limitation).
+    """
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    regioni: frozenset[str] = frozenset()
+    province: frozenset[str] = frozenset()
+    comuni: frozenset[str] = frozenset()
+
+    def matches(self, istat_comune: str) -> bool:
+        if istat_comune in self.comuni:
+            return True
+        if len(istat_comune) >= 3 and istat_comune[:3] in self.province:
+            return True
+        return False
+
+
+class LossesMode(StrEnum):
+    """How the engine applies network losses (1 + LOSSES, see
+    ``bestbill.arera.policy``) to an offer's energy terms. Verified against
+    AU "Regole per il calcolo della spesa annua stimata" v4.0:
+
+    - ``NONE``: no losses (fixed offers of both ARERA sources; every
+      custom/legacy offer).
+    - ``INDEX_ONLY``: losses apply to the index only, not the spread
+      (mercato libero variable offers).
+    - ``INDEX_AND_SPREAD``: losses apply to (index + spread) together
+      (PLACET variable offers, i.e. PINGM + alpha).
+    """
+
+    NONE = "none"
+    INDEX_ONLY = "index_only"
+    INDEX_AND_SPREAD = "index_and_spread"
+
+
+class DiscountValidity(StrEnum):
+    """ARERA Sconto/VALIDITA."""
+
+    ON_ENTRY = "on_entry"
+    WITHIN_12_MONTHS = "within_12_months"
+    BEYOND_12_MONTHS = "beyond_12_months"
+
+
+class DiscountUnit(StrEnum):
+    """ARERA UNITA_MISURA, as used under Sconto/PrezziSconto."""
+
+    EUR_YEAR = "eur_year"
+    EUR_KW_YEAR = "eur_kw_year"
+    EUR_KWH = "eur_kwh"
+    EUR_SMC = "eur_smc"
+    EUR_ONE_OFF = "eur_one_off"
+    PERCENT = "percent"
+
+
+class Discount(BaseModel):
+    """A commercial discount (Sconto). Unconditional first-12-month
+    discounts are priced into the estimate by the engine (see
+    ``bestbill.arera.policy``); conditional discounts are kept for display
+    only.
+    """
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    name: str
+    description: str = ""
+    validity: DiscountValidity
+    conditional: bool
+    amount: float
+    unit: DiscountUnit
+    applies_before_vat: bool = True
+    #: Annual-consumption band this discount applies to (ARERA
+    #: Sconto/PrezziSconto VALIDO_DA/VALIDO_FINO), only meaningful for
+    #: ``DiscountUnit.EUR_KWH``: the discount applies to the kWh consumed
+    #: within [consumption_from_kwh, consumption_to_kwh) of the customer's
+    #: annual consumption. Multiple ``PrezziSconto`` tiers on the same
+    #: ``Sconto`` become separate ``Discount`` objects and are additive
+    #: over their ranges (see ``bestbill.arera.policy``). ``None`` means no
+    #: band restriction (the whole annual consumption).
+    consumption_from_kwh: float | None = Field(default=None, ge=0)
+    consumption_to_kwh: float | None = Field(default=None, ge=0)
+    #: First N months (from activation) this discount is valid for (ARERA
+    #: Sconto/PeriodoValidita/DURATA, only ever observed on €/kWh
+    #: discounts); ``None`` means the whole 12-month estimate window.
+    duration_months: int | None = Field(default=None, ge=1)
+
+    @model_validator(mode="after")
+    def _consumption_band_is_valid(self) -> Discount:
+        if (
+            self.consumption_from_kwh is not None
+            and self.consumption_to_kwh is not None
+            and self.consumption_from_kwh > self.consumption_to_kwh
+        ):
+            raise ValueError("consumption_from_kwh must be <= consumption_to_kwh")
+        return self
+
+
+class ConsumptionTier(BaseModel):
+    """A consumption-based price tier (ARERA IntervalloPrezzi
+    CONSUMO_DA/CONSUMO_A): the price applies to the portion of the
+    offer's own band annual consumption within
+    ``[from_kwh, to_kwh)`` (``to_kwh=None`` means unbounded). Tiers on the
+    same band are additive over their ranges (marginal, like a tax
+    bracket, confirmed by the ATENA/000190 sample offers' own
+    descriptions -- see docs/pricing-policy.md); *inferred* since the AU
+    "Regole per il calcolo della spesa annua stimata" v4.0 copy available
+    to this importer only names "scaglioni di consumo" without a full
+    worked formula.
+    """
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    from_kwh: float = Field(ge=0)
+    to_kwh: float | None = Field(default=None, ge=0)
+    price_eur_kwh: float
+
+    @model_validator(mode="after")
+    def _range_is_valid(self) -> ConsumptionTier:
+        if self.to_kwh is not None and self.to_kwh < self.from_kwh:
+            raise ValueError("to_kwh must be >= from_kwh")
+        return self
+
+
 def _next_month(d: date) -> date:
     if d.month == 12:
         return date(d.year + 1, 1, 1)
@@ -73,7 +287,15 @@ def _next_month(d: date) -> date:
 
 
 class Offer(BaseModel):
-    """A normalised electricity offer, from ARERA data or a custom source."""
+    """A normalised electricity offer, from ARERA data or a custom source.
+
+    Scope: every priced field on this model is **retailer-dependent**
+    (energy price/spread, supplier fees, supplier-set €/kWh extras, power
+    fees, discounts) -- the commodity/supplier part of the bill. Network
+    charges, system charges, excise duties and VAT are the same for every
+    supplier by law and are never modelled here (see PLAN.md §5 and
+    ``bestbill.core.calculator.compare``'s docstring).
+    """
 
     model_config = ConfigDict(frozen=True, extra="forbid")
 
@@ -89,15 +311,78 @@ class Offer(BaseModel):
     energy_price_eur_kwh: dict[str, float] = Field(default_factory=dict)
     #: €/kWh spread added on top of PUN (variable) or the fixed price (fixed).
     spread_eur_kwh: dict[str, float] = Field(default_factory=dict)
+    #: Consumption-tiered ADDITIONS to ``energy_price_eur_kwh`` per band
+    #: (ARERA IntervalloPrezzi CONSUMO_DA/CONSUMO_A, fixed offers only --
+    #: see ``ConsumptionTier`` and ``bestbill.arera.policy``). The final
+    #: per-band price is ``energy_price_eur_kwh[band] * kwh_in_band +
+    #: tiered_annual_value(energy_price_tiers_eur_kwh[band], kwh_in_band)``.
+    #: Empty for every band that has no tiered pricing.
+    energy_price_tiers_eur_kwh: dict[str, list[ConsumptionTier]] = Field(
+        default_factory=dict
+    )
+    #: Same as ``energy_price_tiers_eur_kwh`` but for ``spread_eur_kwh``
+    #: (variable offers, or the MACROAREA 04/06 spread on fixed offers).
+    spread_tiers_eur_kwh: dict[str, list[ConsumptionTier]] = Field(default_factory=dict)
     #: Annual fixed commercial fee, already converted to €/year.
     fixed_fee_eur_year: float = Field(ge=0)
-    #: Other per-kWh extras (dispatching, capacity market, etc.).
-    other_per_kwh_eur: float = 0.0
+    #: Other per-kWh extras already in €/kWh (dispatching, capacity market,
+    #: renewable price, etc. -- see ``bestbill.arera.policy``).
+    per_kwh_extras_eur: float = 0.0
+    #: Annual power fee, €/kW/year (ARERA UNITA_MISURA 02); priced against a
+    #: committed power input at compare() time (default 3 kW).
+    power_fee_eur_kw_year: float = 0.0
+    #: One-off fee, €, ADDED to the 12-month cost total (ARERA MACROAREA 01
+    #: UM 05 / MACROAREA 05 UM 05 -- see docs/pricing-policy.md §5). Still
+    #: reported separately in ``OfferResult.one_off_fee_eur`` for display.
+    one_off_fee_eur: float = 0.0
+    #: Commercial discounts; only unconditional first-12-month ones are
+    #: priced (see ``bestbill.arera.policy``), the rest are kept for display.
+    discounts: list[Discount] = Field(default_factory=list)
+
+    #: Dispatching (TIPO_DISPACCIAMENTO) cost, precomputed by the parsers
+    #: from the ARERA parameters files (see ``bestbill.arera.policy`` and
+    #: ``bestbill.arera.parameters``). Already includes losses where the
+    #: dispatching table calls for them -- the calculator must NOT apply
+    #: losses again to these two fields.
+    dispatching_eur_kwh: float = 0.0
+    dispatching_eur_year: float = 0.0
+    #: Named component values (e.g. {"msd": ..., "modeol": ...}) kept for
+    #: display/debugging; not used in the cost calculation itself.
+    dispatching_breakdown: dict[str, float] = Field(default_factory=dict)
+    #: True if the dispatching value is an approximation (TIPO_DISPACCIAMENTO
+    #: 09, Capacity Market mean applied to all 12 months instead of the
+    #: current quarter only -- see docs/pricing-policy.md).
+    dispatching_approximate: bool = False
+
+    #: ARERA TIPO_CLIENTE. MVP only prices domestic offers.
+    customer: CustomerType = CustomerType.DOMESTIC
+    #: ARERA DOMESTICO_RESIDENTE eligibility restriction.
+    residency: Residency = Residency.ANY
+    #: ARERA ZoneOfferta; ``None`` means a national offer.
+    geo: GeoRestriction | None = None
+    #: How the engine applies network losses (1 + LOSSES) to this offer's
+    #: energy terms; see ``bestbill.arera.policy`` and ``LossesMode``.
+    #: Custom (legacy Excel) offers default to NONE to keep their
+    #: historical, loss-free pricing.
+    losses_mode: LossesMode = LossesMode.NONE
 
     consumption_min_kwh: float | None = Field(default=None, ge=0)
     consumption_max_kwh: float | None = Field(default=None, ge=0)
     valid_from: date | None = None
     valid_to: date | None = None
+
+    #: Retailer VAT number (11 digits, zero-padded), when known. ARERA
+    #: mercato libero XML only publishes PIVA_UTENTE; PLACET CSV publishes
+    #: both ``p_iva`` and ``denominazione`` directly.
+    supplier_vat: str | None = None
+    #: Where ``supplier`` came from -- see ``SupplierNameSource`` and
+    #: ``bestbill.arera.operators``. ``None`` for custom (legacy Excel)
+    #: offers and the rare mercato libero offer with no VAT at all.
+    supplier_name_source: SupplierNameSource | None = None
+    #: True for a custom (legacy Excel) offer priced with the standard
+    #: household dispatching (``--include-custom``, see
+    #: ``bestbill.cli``), for display/transparency only.
+    dispatching_is_standard_estimate: bool = False
 
     @model_validator(mode="after")
     def _check_bands_and_prices(self) -> Offer:
@@ -146,6 +431,20 @@ class Offer(BaseModel):
             and self.valid_from > self.valid_to
         ):
             raise ValueError("valid_from must be <= valid_to")
+
+        tier_bands = set(self.energy_price_tiers_eur_kwh) | set(
+            self.spread_tiers_eur_kwh
+        )
+        if tier_bands - expected:
+            raise ValueError(
+                f"tier bands {sorted(tier_bands - expected)} not in "
+                f"band_structure {self.band_structure!r} (expected {sorted(expected)})"
+            )
+        if self.price_type is PriceType.VARIABLE and self.energy_price_tiers_eur_kwh:
+            raise ValueError(
+                "variable offers must not set energy_price_tiers_eur_kwh "
+                "(price comes from PUN + spread)"
+            )
 
         return self
 
@@ -276,7 +575,34 @@ class Flat(BaseModel):
 Scenario = Annotated[Historical | Scaled | Flat, Field(discriminator="kind")]
 
 
+class CostBreakdown(BaseModel):
+    """Decomposition of an offer's ``cost_eur`` into its ARERA-policy
+    parts. ``energy + fixed_fees + per_kwh_extras + power_fee +
+    dispatching + one_off - discounts == total`` (within floating-point
+    tolerance) -- see ``bestbill.core.calculator`` and
+    ``docs/pricing-policy.md`` §7.
+    """
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    energy: float
+    fixed_fees: float
+    per_kwh_extras: float
+    power_fee: float
+    dispatching: float
+    one_off: float
+    discounts: float
+    total: float
+
+
 class OfferResult(BaseModel):
+    """Ranking result for one offer. ``cost_eur`` is the estimated annual
+    **commodity/supplier cost** (energy + supplier fees/extras/dispatching/
+    one-off/discounts) only -- it never includes network charges, system
+    charges, excise duties or VAT, which are identical across suppliers
+    and don't affect the ranking (see ``compare()``'s docstring).
+    """
+
     model_config = ConfigDict(frozen=True, extra="forbid")
 
     offer_id: str
@@ -288,6 +614,19 @@ class OfferResult(BaseModel):
     eur_per_kwh_effective: float
     rank: int = Field(ge=1)
     break_even_pun_eur_kwh: float | None = None
+    #: Why ``break_even_pun_eur_kwh`` is (or isn't) set -- see
+    #: ``BreakEvenStatus``. ``None`` for fixed offers.
+    break_even_status: BreakEvenStatus | None = None
+    #: One-off fee, included in ``cost_eur`` (see ``breakdown.one_off``)
+    #: and also reported here for convenience/display.
+    one_off_fee_eur: float = 0.0
+    #: Conditional discounts kept for display only (not priced).
+    conditional_discounts: list[Discount] = Field(default_factory=list)
+    breakdown: CostBreakdown
+    #: True if this offer's dispatching cost is the catalogue's standard
+    #: household estimate rather than its own (custom/legacy offers priced
+    #: with ``--include-custom``, see ``bestbill.cli``), for display only.
+    dispatching_is_standard_estimate: bool = False
 
 
 class Assumptions(BaseModel):
@@ -300,9 +639,20 @@ class Assumptions(BaseModel):
     band_split_source: Literal["user", "standard"]
     scenario: Scenario
     statement: str
+    committed_power_kw: float = 3.0
+    residency: Literal["resident", "non_resident"] = "resident"
+    istat_comune: str | None = None
+    #: What every cost in this comparison measures (see ``COST_LABEL``);
+    #: never the full electricity bill.
+    cost_label: str = COST_LABEL
 
 
 class Comparison(BaseModel):
+    """The ranked result of :func:`bestbill.core.calculator.compare`.
+    Every cost in ``results`` is the commodity/supplier cost only (see
+    ``OfferResult``); it is not the full electricity bill.
+    """
+
     model_config = ConfigDict(frozen=True, extra="forbid")
 
     results: list[OfferResult]
