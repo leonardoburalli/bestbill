@@ -52,6 +52,17 @@ def placet_url(d: date) -> str:
     return f"{BASE_URL}/offerte/{_month_folder(d)}/PO_Offerte_E_PLACET_{d:%Y%m%d}.csv"
 
 
+def parametri_ml_url(d: date) -> str:
+    return (
+        f"{BASE_URL}/parametriML/{_month_folder(d)}/"
+        f"PO_Parametri_Mercato_Libero_E_{d:%Y%m%d}.csv"
+    )
+
+
+def parametri_e_url(d: date) -> str:
+    return f"{BASE_URL}/parametri/{_month_folder(d)}/PO_Parametri_E_{d:%Y%m%d}.csv"
+
+
 def _download(
     url: str,
     *,
@@ -153,6 +164,53 @@ def fetch_placet(
 ) -> FetchResult:
     return fetch_with_fallback(
         placet_url,
+        target,
+        dest,
+        max_fallback_days=max_fallback_days,
+        max_retries=max_retries,
+        backoff_seconds=backoff_seconds,
+        sleep=sleep,
+        opener=opener,
+    )
+
+
+def fetch_parametri_ml(
+    target: date,
+    dest: Path,
+    *,
+    max_fallback_days: int = MAX_FALLBACK_DAYS,
+    max_retries: int = MAX_RETRIES,
+    backoff_seconds: float = BACKOFF_SECONDS,
+    sleep: Callable[[float], None] | None = None,
+    opener: urllib.request.OpenerDirector | None = None,
+) -> FetchResult:
+    """Mercato libero dispatching parameters (msd, modeol, cpty_mrkt_*, ...
+    see docs/arera-data.md and bestbill.arera.parameters)."""
+    return fetch_with_fallback(
+        parametri_ml_url,
+        target,
+        dest,
+        max_fallback_days=max_fallback_days,
+        max_retries=max_retries,
+        backoff_seconds=backoff_seconds,
+        sleep=sleep,
+        opener=opener,
+    )
+
+
+def fetch_parametri_e(
+    target: date,
+    dest: Path,
+    *,
+    max_fallback_days: int = MAX_FALLBACK_DAYS,
+    max_retries: int = MAX_RETRIES,
+    backoff_seconds: float = BACKOFF_SECONDS,
+    sleep: Callable[[float], None] | None = None,
+    opener: urllib.request.OpenerDirector | None = None,
+) -> FetchResult:
+    """PLACET dispatching parameters (dispbt_d, cdispd, ...)."""
+    return fetch_with_fallback(
+        parametri_e_url,
         target,
         dest,
         max_fallback_days=max_fallback_days,
