@@ -11,6 +11,7 @@ from bestbill.core.models import (
     Assumptions,
     Comparison,
     ConsumptionProfile,
+    CostBreakdown,
     CustomerType,
     Discount,
     Flat,
@@ -111,10 +112,14 @@ def _scenario_statement(
     period_start: date, period_end: date, scenario: Scenario
 ) -> str:
     period = f"{_italian_month_year(period_start)} – {_italian_month_year(period_end)}"
+    base = (
+        "Non include costi di rete, oneri di sistema e imposte: sono uguali "
+        "per ogni fornitore e non dipendono dalla scelta dell'offerta."
+    )
     if isinstance(scenario, Historical):
         return (
             "Stima nell'ipotesi che nei prossimi 12 mesi i tuoi consumi e il PUN "
-            f"siano identici a quelli di {period}. Non è una previsione."
+            f"siano identici a quelli di {period}. Non è una previsione. {base}"
         )
     if isinstance(scenario, Scaled):
         pct = round((scenario.factor - 1) * 100)
@@ -122,13 +127,13 @@ def _scenario_statement(
         return (
             "Stima nell'ipotesi che nei prossimi 12 mesi i tuoi consumi siano "
             f"identici a quelli di {period}, con un PUN storico modificato "
-            f"({sign}{pct}%). Non è una previsione."
+            f"({sign}{pct}%). Non è una previsione. {base}"
         )
     if isinstance(scenario, Flat):
         return (
             "Stima nell'ipotesi che nei prossimi 12 mesi i tuoi consumi siano "
             f"identici a quelli di {period}, con un PUN costante di "
-            f"{scenario.value:.3f} €/kWh. Non è una previsione."
+            f"{scenario.value:.3f} €/kWh. Non è una previsione. {base}"
         )
     raise ValueError(f"unsupported scenario: {scenario!r}")
 
@@ -202,14 +207,16 @@ def _conditional_discounts(offer: Offer) -> list[Discount]:
     ]
 
 
-def _offer_cost(
+def _energy_cost(
     offer: Offer,
     monthly_band_kwh: list[dict[str, float]],
     pun_by_month: dict[date, float] | None,
     months: list[date],
-    total_kwh: float,
-    committed_power_kw: float,
 ) -> float:
+    """Σ price/PUN × kWh (+ spread), with losses applied per
+    ``offer.losses_mode``. This is the "energy" breakdown bucket and the
+    base for percent-unit discounts (docs/pricing-policy.md §6-7).
+    """
     index_multiplier, spread_multiplier = _loss_multipliers(offer)
     energy_cost = 0.0
     if offer.price_type is PriceType.FIXED:
@@ -218,9 +225,7 @@ def _offer_cost(
                 price = offer.energy_price_eur_kwh[band]
                 spread = offer.spread_eur_kwh[band]
                 energy_cost += kwh * (
-                    price * index_multiplier
-                    + spread * spread_multiplier
-                    + offer.per_kwh_extras_eur
+                    price * index_multiplier + spread * spread_multiplier
                 )
     else:
         assert pun_by_month is not None
@@ -229,18 +234,48 @@ def _offer_cost(
             for band, kwh in band_kwh.items():
                 spread = offer.spread_eur_kwh[band]
                 energy_cost += kwh * (
-                    pun_value * index_multiplier
-                    + spread * spread_multiplier
-                    + offer.per_kwh_extras_eur
+                    pun_value * index_multiplier + spread * spread_multiplier
                 )
+    return energy_cost
 
-    fees = offer.fixed_fee_eur_year + offer.power_fee_eur_kw_year * committed_power_kw
-    gross = energy_cost + fees
-    discount_total = sum(
-        policy.discount_annual_value_eur(d, total_kwh, energy_cost)
+
+def _offer_breakdown(
+    offer: Offer,
+    monthly_band_kwh: list[dict[str, float]],
+    pun_by_month: dict[date, float] | None,
+    months: list[date],
+    total_kwh: float,
+    committed_power_kw: float,
+) -> CostBreakdown:
+    energy = _energy_cost(offer, monthly_band_kwh, pun_by_month, months)
+    fixed_fees = offer.fixed_fee_eur_year + offer.dispatching_eur_year
+    per_kwh_extras = total_kwh * offer.per_kwh_extras_eur
+    power_fee = offer.power_fee_eur_kw_year * committed_power_kw
+    dispatching = total_kwh * offer.dispatching_eur_kwh
+    one_off = offer.one_off_fee_eur
+    discounts = sum(
+        policy.discount_annual_value_eur(d, total_kwh, energy)
         for d in _priced_discounts(offer)
     )
-    return gross - discount_total
+    total = (
+        energy
+        + fixed_fees
+        + per_kwh_extras
+        + power_fee
+        + dispatching
+        + one_off
+        - discounts
+    )
+    return CostBreakdown(
+        energy=energy,
+        fixed_fees=fixed_fees,
+        per_kwh_extras=per_kwh_extras,
+        power_fee=power_fee,
+        dispatching=dispatching,
+        one_off=one_off,
+        discounts=discounts,
+        total=total,
+    )
 
 
 def _break_even_pun(
@@ -251,18 +286,25 @@ def _break_even_pun(
     committed_power_kw: float,
 ) -> float | None:
     """Flat average PUN at which this variable offer costs the same as the
-    cheapest eligible fixed offer.
+    cheapest eligible fixed offer, including dispatching, one-off fees and
+    priced discounts (docs/pricing-policy.md §7).
     """
     if best_fixed_cost is None or total_kwh <= 0:
         return None
     index_multiplier, spread_multiplier = _loss_multipliers(offer)
-    rest = offer.fixed_fee_eur_year + offer.power_fee_eur_kw_year * committed_power_kw
+    rest = (
+        offer.fixed_fee_eur_year
+        + offer.dispatching_eur_year
+        + offer.power_fee_eur_kw_year * committed_power_kw
+        + offer.one_off_fee_eur
+        + total_kwh * offer.per_kwh_extras_eur
+        + total_kwh * offer.dispatching_eur_kwh
+    )
     spread_energy_cost = 0.0
     for band_kwh in monthly_band_kwh:
         for band, kwh in band_kwh.items():
             spread = offer.spread_eur_kwh[band]
             spread_energy_cost += kwh * spread * spread_multiplier
-            rest += kwh * offer.per_kwh_extras_eur
     rest += spread_energy_cost
     # Discounts are priced against the realised energy cost; approximate it
     # here with the spread-only energy cost (the PUN part cancels out at
@@ -303,9 +345,10 @@ def estimate_annual_cost(
             return None
         pun_by_month = resolved[0]
 
-    return _offer_cost(
+    breakdown = _offer_breakdown(
         offer, band_kwh, pun_by_month, months, total_kwh, committed_power_kw
     )
+    return breakdown.total
 
 
 def compare(
@@ -322,12 +365,14 @@ def compare(
 
     Scope: this prices the **commodity/supplier cost only** -- energy
     price/spread (with network losses applied where flagged), supplier
-    fixed fees, supplier-set €/kWh extras (e.g. dispatching pass-through),
-    power fees and unconditional discounts. It never adds network charges,
-    system charges, excise duties or VAT: those are set by regulation and
-    are identical for every supplier, so they don't change the ranking
-    (PLAN.md §5). Every ``cost_eur`` in the result is this supplier cost,
-    not the full electricity bill.
+    fixed fees, supplier-set €/kWh extras (e.g. MACROAREA 02 pass-through),
+    dispatching (TIPO_DISPACCIAMENTO, precomputed on the offer), power
+    fees, one-off fees and unconditional discounts. It never adds network
+    charges, system charges, excise duties or VAT: those are set by
+    regulation and are identical for every supplier, so they don't change
+    the ranking (PLAN.md §5). Every ``cost_eur`` in the result is this
+    supplier cost, not the full electricity bill; see
+    ``Assumptions.cost_label``.
 
     ``residency``/``istat_comune`` filter offers restricted to residents or
     to a geographic zone (ARERA ZoneOfferta); ``istat_comune`` is the
@@ -374,8 +419,8 @@ def compare(
         for offer in eligible
     }
 
-    costs: dict[str, float] = {
-        offer.id: _offer_cost(
+    breakdowns: dict[str, CostBreakdown] = {
+        offer.id: _offer_breakdown(
             offer,
             offer_band_kwh[offer.id],
             pun_months_used if offer.price_type is PriceType.VARIABLE else None,
@@ -384,6 +429,9 @@ def compare(
             committed_power_kw,
         )
         for offer in eligible
+    }
+    costs: dict[str, float] = {
+        offer_id: breakdown.total for offer_id, breakdown in breakdowns.items()
     }
 
     fixed_costs = [costs[o.id] for o in eligible if o.price_type is PriceType.FIXED]
@@ -417,6 +465,7 @@ def compare(
                 break_even_pun_eur_kwh=break_even,
                 one_off_fee_eur=offer.one_off_fee_eur,
                 conditional_discounts=_conditional_discounts(offer),
+                breakdown=breakdowns[offer.id],
             )
         )
 

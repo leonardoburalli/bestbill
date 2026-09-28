@@ -87,15 +87,18 @@ def test_power_fee_priced_with_committed_power():
     assert comparison.results[0].cost_eur == pytest.approx(expected)
 
 
-def test_one_off_fee_shown_but_not_in_annual_cost():
+def test_one_off_fee_added_to_annual_cost():
     profile = make_profile([100.0] * 12)
     pun = make_pun([0.10] * 12)
     offer = fixed_offer(price=0.10, spread=0.0, fee=0.0, one_off_fee_eur=60.0)
 
     comparison = compare([offer], profile, pun)
 
-    assert comparison.results[0].cost_eur == pytest.approx(1200.0 * 0.10)
+    # docs/pricing-policy.md §5: MACROAREA 05/01 UM 05 one-off fees are
+    # added to the 12-month total, not just shown for reference.
+    assert comparison.results[0].cost_eur == pytest.approx(1200.0 * 0.10 + 60.0)
     assert comparison.results[0].one_off_fee_eur == 60.0
+    assert comparison.results[0].breakdown.one_off == 60.0
 
 
 def test_unconditional_discount_reduces_cost():
@@ -264,3 +267,89 @@ def test_custom_offer_defaults_keep_legacy_behaviour():
     assert offer.geo is None
     assert offer.losses_mode.value == "none"
     assert offer.discounts == []
+
+
+def test_breakdown_parts_sum_to_cost_eur_fixed_offer_with_everything():
+    profile = make_profile([100.0] * 12)
+    pun = make_pun([0.10] * 12)
+    discount = Discount(
+        name="Bonus",
+        validity=DiscountValidity.ON_ENTRY,
+        conditional=False,
+        amount=30.0,
+        unit=DiscountUnit.EUR_YEAR,
+    )
+    offer = fixed_offer(
+        price=0.12,
+        spread=0.0,
+        fee=90.0,
+        per_kwh_extras_eur=0.01,
+        power_fee_eur_kw_year=15.0,
+        one_off_fee_eur=25.0,
+        dispatching_eur_kwh=0.02,
+        dispatching_eur_year=1.107,
+        discounts=[discount],
+    )
+
+    comparison = compare([offer], profile, pun, committed_power_kw=3.0)
+    result = comparison.results[0]
+    b = result.breakdown
+
+    assert (
+        b.energy
+        + b.fixed_fees
+        + b.per_kwh_extras
+        + b.power_fee
+        + b.dispatching
+        + b.one_off
+        - b.discounts
+        == pytest.approx(b.total)
+    )
+    assert b.total == pytest.approx(result.cost_eur)
+    assert b.energy == pytest.approx(1200.0 * 0.12)
+    assert b.fixed_fees == pytest.approx(90.0 + 1.107)
+    assert b.per_kwh_extras == pytest.approx(1200.0 * 0.01)
+    assert b.power_fee == pytest.approx(15.0 * 3.0)
+    assert b.dispatching == pytest.approx(1200.0 * 0.02)
+    assert b.one_off == pytest.approx(25.0)
+    assert b.discounts == pytest.approx(30.0)
+
+
+def test_break_even_pun_correct_with_dispatching_discounts_and_one_off():
+    profile = make_profile([100.0] * 12)
+    pun = make_pun([0.10] * 12)
+    fixed = fixed_offer(offer_id="fixed", price=0.15, spread=0.0, fee=50.0)
+    discount = Discount(
+        name="Bonus",
+        validity=DiscountValidity.ON_ENTRY,
+        conditional=False,
+        amount=20.0,
+        unit=DiscountUnit.EUR_YEAR,
+    )
+    var = variable_offer(
+        offer_id="var",
+        spread=0.03,
+        fee=20.0,
+        dispatching_eur_kwh=0.024,
+        dispatching_eur_year=1.107,
+        one_off_fee_eur=10.0,
+        discounts=[discount],
+    )
+
+    comparison = compare([fixed, var], profile, pun)
+    var_result = next(r for r in comparison.results if r.offer_id == "var")
+    break_even = var_result.break_even_pun_eur_kwh
+    assert break_even is not None
+
+    from bestbill.core.models import Flat as FlatScenario
+
+    comparison_at_break_even = compare(
+        [fixed, var], profile, pun, scenario=FlatScenario(value=break_even)
+    )
+    fixed_cost = next(
+        r.cost_eur for r in comparison_at_break_even.results if r.offer_id == "fixed"
+    )
+    var_cost = next(
+        r.cost_eur for r in comparison_at_break_even.results if r.offer_id == "var"
+    )
+    assert var_cost == pytest.approx(fixed_cost, abs=1e-6)

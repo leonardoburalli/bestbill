@@ -32,10 +32,16 @@ __all__ = [
     "Scaled",
     "Flat",
     "Scenario",
+    "CostBreakdown",
     "OfferResult",
     "Assumptions",
     "Comparison",
 ]
+
+#: Label for the cost this engine estimates -- shown next to every total in
+#: the CLI/API/assumptions. Never the full electricity bill (see
+#: ``Offer``'s and ``compare()``'s docstrings).
+COST_LABEL = "costo materia energia (IVA esclusa)"
 
 
 class Band(StrEnum):
@@ -219,11 +225,28 @@ class Offer(BaseModel):
     #: Annual power fee, €/kW/year (ARERA UNITA_MISURA 02); priced against a
     #: committed power input at compare() time (default 3 kW).
     power_fee_eur_kw_year: float = 0.0
-    #: One-off fee, €, shown but excluded from the annual cost estimate.
+    #: One-off fee, €, ADDED to the 12-month cost total (ARERA MACROAREA 01
+    #: UM 05 / MACROAREA 05 UM 05 -- see docs/pricing-policy.md §5). Still
+    #: reported separately in ``OfferResult.one_off_fee_eur`` for display.
     one_off_fee_eur: float = 0.0
     #: Commercial discounts; only unconditional first-12-month ones are
     #: priced (see ``bestbill.arera.policy``), the rest are kept for display.
     discounts: list[Discount] = Field(default_factory=list)
+
+    #: Dispatching (TIPO_DISPACCIAMENTO) cost, precomputed by the parsers
+    #: from the ARERA parameters files (see ``bestbill.arera.policy`` and
+    #: ``bestbill.arera.parameters``). Already includes losses where the
+    #: dispatching table calls for them -- the calculator must NOT apply
+    #: losses again to these two fields.
+    dispatching_eur_kwh: float = 0.0
+    dispatching_eur_year: float = 0.0
+    #: Named component values (e.g. {"msd": ..., "modeol": ...}) kept for
+    #: display/debugging; not used in the cost calculation itself.
+    dispatching_breakdown: dict[str, float] = Field(default_factory=dict)
+    #: True if the dispatching value is an approximation (TIPO_DISPACCIAMENTO
+    #: 09, Capacity Market mean applied to all 12 months instead of the
+    #: current quarter only -- see docs/pricing-policy.md).
+    dispatching_approximate: bool = False
 
     #: ARERA TIPO_CLIENTE. MVP only prices domestic offers.
     customer: CustomerType = CustomerType.DOMESTIC
@@ -419,12 +442,32 @@ class Flat(BaseModel):
 Scenario = Annotated[Historical | Scaled | Flat, Field(discriminator="kind")]
 
 
+class CostBreakdown(BaseModel):
+    """Decomposition of an offer's ``cost_eur`` into its ARERA-policy
+    parts. ``energy + fixed_fees + per_kwh_extras + power_fee +
+    dispatching + one_off - discounts == total`` (within floating-point
+    tolerance) -- see ``bestbill.core.calculator`` and
+    ``docs/pricing-policy.md`` §7.
+    """
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    energy: float
+    fixed_fees: float
+    per_kwh_extras: float
+    power_fee: float
+    dispatching: float
+    one_off: float
+    discounts: float
+    total: float
+
+
 class OfferResult(BaseModel):
     """Ranking result for one offer. ``cost_eur`` is the estimated annual
-    **commodity/supplier cost** (energy + supplier fees/extras/discounts)
-    only -- it never includes network charges, system charges, excise
-    duties or VAT, which are identical across suppliers and don't affect
-    the ranking (see ``compare()``'s docstring).
+    **commodity/supplier cost** (energy + supplier fees/extras/dispatching/
+    one-off/discounts) only -- it never includes network charges, system
+    charges, excise duties or VAT, which are identical across suppliers
+    and don't affect the ranking (see ``compare()``'s docstring).
     """
 
     model_config = ConfigDict(frozen=True, extra="forbid")
@@ -438,10 +481,12 @@ class OfferResult(BaseModel):
     eur_per_kwh_effective: float
     rank: int = Field(ge=1)
     break_even_pun_eur_kwh: float | None = None
-    #: One-off fee, shown but not included in cost_eur.
+    #: One-off fee, included in ``cost_eur`` (see ``breakdown.one_off``)
+    #: and also reported here for convenience/display.
     one_off_fee_eur: float = 0.0
     #: Conditional discounts kept for display only (not priced).
     conditional_discounts: list[Discount] = Field(default_factory=list)
+    breakdown: CostBreakdown
 
 
 class Assumptions(BaseModel):
@@ -457,6 +502,9 @@ class Assumptions(BaseModel):
     committed_power_kw: float = 3.0
     residency: Literal["resident", "non_resident"] = "resident"
     istat_comune: str | None = None
+    #: What every cost in this comparison measures (see ``COST_LABEL``);
+    #: never the full electricity bill.
+    cost_label: str = COST_LABEL
 
 
 class Comparison(BaseModel):
