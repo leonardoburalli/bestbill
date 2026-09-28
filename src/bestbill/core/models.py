@@ -25,6 +25,8 @@ __all__ = [
     "DiscountUnit",
     "Discount",
     "ConsumptionTier",
+    "SupplierNameSource",
+    "BreakEvenStatus",
     "Offer",
     "MonthlyConsumption",
     "ConsumptionProfile",
@@ -86,6 +88,47 @@ class CustomerType(StrEnum):
 
     DOMESTIC = "domestic"
     NON_DOMESTIC = "non_domestic"
+
+
+class SupplierNameSource(StrEnum):
+    """Where an offer's ``supplier`` display name came from, in resolution
+    order (see ``bestbill.arera.operators`` and ``bestbill.catalog.build``):
+
+    - ``ARERA``: the ARERA "Ricerca operatori" export (RAGIONE SOCIALE),
+      matched by VAT (PARTITA IVA).
+    - ``PLACET``: a PLACET row's ``denominazione`` for the same VAT
+      (mercato libero offers only -- PLACET offers always use ``ARERA``
+      or their own ``denominazione`` directly is treated as ``PLACET``).
+    - ``DOMAIN``: the retailer's website domain, from
+      ``URL_SITO_VENDITORE``, stripped of scheme/``www.``/path.
+    - ``VAT``: last resort, ``"P.IVA <vat>"``.
+    """
+
+    ARERA = "arera"
+    PLACET = "placet"
+    DOMAIN = "domain"
+    VAT = "vat"
+
+
+class BreakEvenStatus(StrEnum):
+    """Classifies a variable offer's break-even PUN against the cheapest
+    eligible fixed offer (see ``bestbill.core.calculator._break_even_pun``):
+
+    - ``CHEAPER_BELOW``: the normal case -- the variable offer is cheaper
+      than the best fixed offer for PUN values below the break-even point
+      (and more expensive above it).
+    - ``NEVER_CHEAPER``: the break-even PUN is <= 0 -- the variable offer
+      is never cheaper than the best fixed offer at any non-negative PUN.
+    - ``ALWAYS_CHEAPER``: the variable offer's cost slope (kWh × loss
+      multiplier) is <= 0, so it can't be compared as a break-even point;
+      in practice this only happens when there's no fixed offer to break
+      even against or the variable offer has zero/negative consumption
+      exposure -- kept for completeness, see the calculator docstring.
+    """
+
+    CHEAPER_BELOW = "cheaper_below"
+    NEVER_CHEAPER = "never_cheaper"
+    ALWAYS_CHEAPER = "always_cheaper"
 
 
 class Residency(StrEnum):
@@ -328,6 +371,19 @@ class Offer(BaseModel):
     valid_from: date | None = None
     valid_to: date | None = None
 
+    #: Retailer VAT number (11 digits, zero-padded), when known. ARERA
+    #: mercato libero XML only publishes PIVA_UTENTE; PLACET CSV publishes
+    #: both ``p_iva`` and ``denominazione`` directly.
+    supplier_vat: str | None = None
+    #: Where ``supplier`` came from -- see ``SupplierNameSource`` and
+    #: ``bestbill.arera.operators``. ``None`` for custom (legacy Excel)
+    #: offers and the rare mercato libero offer with no VAT at all.
+    supplier_name_source: SupplierNameSource | None = None
+    #: True for a custom (legacy Excel) offer priced with the standard
+    #: household dispatching (``--include-custom``, see
+    #: ``bestbill.cli``), for display/transparency only.
+    dispatching_is_standard_estimate: bool = False
+
     @model_validator(mode="after")
     def _check_bands_and_prices(self) -> Offer:
         expected = EXPECTED_BAND_KEYS[self.band_structure]
@@ -558,12 +614,19 @@ class OfferResult(BaseModel):
     eur_per_kwh_effective: float
     rank: int = Field(ge=1)
     break_even_pun_eur_kwh: float | None = None
+    #: Why ``break_even_pun_eur_kwh`` is (or isn't) set -- see
+    #: ``BreakEvenStatus``. ``None`` for fixed offers.
+    break_even_status: BreakEvenStatus | None = None
     #: One-off fee, included in ``cost_eur`` (see ``breakdown.one_off``)
     #: and also reported here for convenience/display.
     one_off_fee_eur: float = 0.0
     #: Conditional discounts kept for display only (not priced).
     conditional_discounts: list[Discount] = Field(default_factory=list)
     breakdown: CostBreakdown
+    #: True if this offer's dispatching cost is the catalogue's standard
+    #: household estimate rather than its own (custom/legacy offers priced
+    #: with ``--include-custom``, see ``bestbill.cli``), for display only.
+    dispatching_is_standard_estimate: bool = False
 
 
 class Assumptions(BaseModel):

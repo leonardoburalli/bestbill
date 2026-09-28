@@ -14,6 +14,7 @@ from bestbill.arera import policy
 from bestbill.arera.indices import parse_indices_file
 from bestbill.arera.mlibero import Excluded as MliberoExcluded
 from bestbill.arera.mlibero import iter_mlibero_offers
+from bestbill.arera.operators import RICERCA_OPERATORI_URL, parse_operators_file
 from bestbill.arera.parameters import Parameters, parse_parameters_file
 from bestbill.arera.placet import Excluded as PlacetExcluded
 from bestbill.arera.placet import parse_placet_file
@@ -28,13 +29,24 @@ from bestbill.core.models import (
     PunSeries,
 )
 
-SCHEMA_VERSION = 2
+SCHEMA_VERSION = 3
+
+#: Licence of the published catalogue: it combines the ARERA operators list
+#: (CC BY-SA 4.0) with the Portale Offerte offers/parameters (CC BY 4.0),
+#: so the more restrictive share-alike licence applies to the whole
+#: derived catalogue (see PROVENANCE.md).
+CATALOGUE_LICENCE = "CC-BY-SA-4.0"
 
 ATTRIBUTION = (
-    'Dati elaborati a partire dagli Open Data pubblicati su "Portale Offerte" '
+    "Elenco venditori: ARERA – Ricerca operatori (www.arera.it), licenza "
+    "CC BY-SA 4.0. Offerte e parametri: Portale Offerte "
     "(www.ilportaleofferte.it), gestito da Acquirente Unico S.p.A. su "
-    "disposizioni di ARERA. Licenza CC-BY 4.0."
+    "disposizioni di ARERA, licenza CC BY 4.0. Catalogo BestBill derivato: "
+    "CC BY-SA 4.0."
 )
+
+#: Sources listed in the manifest's ``sources`` block (name, url, licence).
+_PORTALE_OFFERTE_URL = "https://www.ilportaleofferte.it"
 
 _SCHEMA_SQL = """
 CREATE TABLE meta (key TEXT PRIMARY KEY, value TEXT NOT NULL);
@@ -141,6 +153,7 @@ def build_catalog(
     params_e_path: str | Path,
     out_dir: str | Path,
     snapshot_date: date | None = None,
+    operators_path: str | Path | None = None,
 ) -> BuildResult:
     snapshot_date = snapshot_date if snapshot_date is not None else date.today()
     out_dir = Path(out_dir)
@@ -151,6 +164,9 @@ def build_catalog(
     pun = parse_indices_file(str(indices_path))
     params_ml = parse_parameters_file(str(params_ml_path))
     params_e = parse_parameters_file(str(params_e_path))
+    operators = (
+        parse_operators_file(str(operators_path)) if operators_path is not None else {}
+    )
 
     offers: list[Offer] = []
     excluded: list[tuple[str, str, str]] = []
@@ -171,7 +187,18 @@ def build_catalog(
         else:
             _add(placet_row)
 
-    for mlibero_row in iter_mlibero_offers(str(mlibero_path), params_ml):
+    # PLACET offers carry both denominazione and p_iva; use them as the
+    # second-choice name source for mercato libero offers whose VAT isn't
+    # in the ARERA operators export (see bestbill.arera.mlibero).
+    placet_names = {
+        offer.supplier_vat: offer.supplier
+        for offer in offers
+        if offer.source is OfferSource.PLACET and offer.supplier_vat
+    }
+
+    for mlibero_row in iter_mlibero_offers(
+        str(mlibero_path), params_ml, operators=operators, placet_names=placet_names
+    ):
         if isinstance(mlibero_row, MliberoExcluded):
             excluded.append(
                 (mlibero_row.row_id, OfferSource.MLIBERO.value, mlibero_row.reason)
@@ -248,6 +275,20 @@ def build_catalog(
             excl = sum(1 for _, s, _ in excluded if s == source)
             counts_by_source[source] = {"included": included, "excluded": excl}
 
+        supplier_name_groups: dict[str, set[str]] = {
+            "arera": set(),
+            "placet": set(),
+            "domain": set(),
+            "vat": set(),
+        }
+        for offer in priced_offers:
+            name_source = offer.supplier_name_source
+            if name_source is None:
+                continue
+            key = offer.supplier_vat or offer.supplier
+            supplier_name_groups[name_source.value].add(key)
+        supplier_names = {k: len(v) for k, v in supplier_name_groups.items()}
+
         meta_rows = {
             "schema_version": str(SCHEMA_VERSION),
             "snapshot_date": snapshot_date.isoformat(),
@@ -270,15 +311,56 @@ def build_catalog(
             f"cdispd| = {abs(dispatching_identity['diff']):.6f} exceeds "
             f"{policy.DISPATCHING_IDENTITY_TOLERANCE:g}"
         )
+    sources = [
+        {
+            "name": "ARERA – Ricerca operatori",
+            "url": RICERCA_OPERATORI_URL,
+            "licence": "CC-BY-SA-4.0",
+            "file_date": snapshot_date.isoformat() if operators_path else None,
+        },
+        {
+            "name": "Portale Offerte – PLACET",
+            "url": _PORTALE_OFFERTE_URL,
+            "licence": "CC-BY-4.0",
+            "file_date": snapshot_date.isoformat(),
+        },
+        {
+            "name": "Portale Offerte – Mercato libero",
+            "url": _PORTALE_OFFERTE_URL,
+            "licence": "CC-BY-4.0",
+            "file_date": snapshot_date.isoformat(),
+        },
+        {
+            "name": "Portale Offerte – Indici storici (PUN)",
+            "url": _PORTALE_OFFERTE_URL,
+            "licence": "CC-BY-4.0",
+            "file_date": snapshot_date.isoformat(),
+        },
+        {
+            "name": "Portale Offerte – Parametri mercato libero",
+            "url": _PORTALE_OFFERTE_URL,
+            "licence": "CC-BY-4.0",
+            "file_date": snapshot_date.isoformat(),
+        },
+        {
+            "name": "Portale Offerte – Parametri PLACET",
+            "url": _PORTALE_OFFERTE_URL,
+            "licence": "CC-BY-4.0",
+            "file_date": snapshot_date.isoformat(),
+        },
+    ]
     manifest = {
         "schema_version": SCHEMA_VERSION,
         "snapshot_date": snapshot_date.isoformat(),
-        "sources": {
+        "source_files": {
             "placet": {"path": str(placet_path)},
             "mlibero": {"path": str(mlibero_path)},
             "indices": {"path": str(indices_path)},
             "parametri_mercato_libero": {"path": str(params_ml_path)},
             "parametri_placet": {"path": str(params_e_path)},
+            "operators": (
+                {"path": str(operators_path)} if operators_path is not None else None
+            ),
         },
         "sqlite_sha256": sha256,
         "counts": {
@@ -288,9 +370,12 @@ def build_catalog(
             "excluded_by_reason": counts_by_reason,
             "by_source": counts_by_source,
         },
+        "supplier_names": supplier_names,
         "pun_months": len(pun.values),
         "dispatching_identity": dispatching_identity,
         "warnings": warnings,
+        "licence": CATALOGUE_LICENCE,
+        "sources": sources,
         "attribution": ATTRIBUTION,
     }
     manifest_path.write_text(

@@ -227,3 +227,54 @@ def fetch_indices(dest: Path, *, timeout: float = 30.0) -> Path:
     dest.parent.mkdir(parents=True, exist_ok=True)
     dest.write_bytes(content)
     return dest
+
+
+def fetch_operators(
+    dest: Path,
+    *,
+    timeout: float = 30.0,
+    opener: urllib.request.OpenerDirector | None = None,
+    max_retries: int = MAX_RETRIES,
+    backoff_seconds: float = BACKOFF_SECONDS,
+    sleep: Callable[[float], None] | None = None,
+) -> Path:
+    """Download the ARERA "Ricerca operatori" export zip: fetch the
+    ricerca-operatori page, discover the current ``export-mercato-vend*.zip``
+    URL (the timestamp changes at every ARERA refresh -- see
+    ``bestbill.arera.operators``), then download it.
+
+    Raises :class:`FetchError` if the page can't be fetched, the export
+    link can't be found on it, or the zip itself can't be downloaded. The
+    caller (``bestbill catalog fetch``) treats this as a soft failure: the
+    operator list is optional (``--operators`` on ``catalog build``), and
+    ``.cicd/catalog.sh`` falls back to the previous snapshot's cached
+    export when this fails.
+    """
+    from bestbill.arera.operators import (
+        RICERCA_OPERATORI_URL,
+        OperatorsFormatError,
+        discover_export_url,
+    )
+
+    try:
+        html_bytes = _download(RICERCA_OPERATORI_URL, opener=opener, timeout=timeout)
+    except (urllib.error.URLError, TimeoutError, OSError) as exc:
+        raise FetchError(f"could not fetch the ricerca-operatori page: {exc}") from exc
+
+    try:
+        zip_url = discover_export_url(html_bytes.decode("utf-8", errors="replace"))
+    except OperatorsFormatError as exc:
+        raise FetchError(str(exc)) from exc
+
+    content = _download_with_retries(
+        zip_url,
+        max_retries=max_retries,
+        backoff_seconds=backoff_seconds,
+        sleep=sleep,
+        opener=opener,
+    )
+    if content is None:
+        raise FetchError(f"could not download the operators export zip at {zip_url}")
+    dest.parent.mkdir(parents=True, exist_ok=True)
+    dest.write_bytes(content)
+    return dest

@@ -19,6 +19,7 @@ from datetime import date, datetime
 
 from bestbill.arera import policy
 from bestbill.arera.codes import TipologiaFasce
+from bestbill.arera.operators import Operator, website_domain, zero_pad_vat
 from bestbill.arera.parameters import Parameters
 from bestbill.core.models import (
     BandStructure,
@@ -31,12 +32,42 @@ from bestbill.core.models import (
     OfferSource,
     PriceType,
     Residency,
+    SupplierNameSource,
 )
 
 _NS = "{http://www.acquirenteunico.it/schemas/SII_AU/OffertaRetail/01}"
 
 #: Sconto/PrezziSconto/TIPOLOGIA code meaning "discount on Maggior Tutela".
 _SCONTO_TIPOLOGIA_MAGGIOR_TUTELA = "04"
+
+
+def _resolve_supplier_name(
+    piva_raw: str,
+    url_sito_venditore: str | None,
+    operators: dict[str, Operator],
+    placet_names: dict[str, str],
+) -> tuple[str, str | None, SupplierNameSource | None]:
+    """Resolve a mercato libero offer's display supplier name, in order:
+    the ARERA "Ricerca operatori" export (by VAT) -> a PLACET row's
+    ``denominazione`` for the same VAT -> the retailer's website domain
+    (``URL_SITO_VENDITORE``) -> ``"P.IVA <vat>"``. Returns ``(name, vat,
+    source)``; ``vat`` and ``source`` are ``None`` if PIVA_UTENTE itself
+    is missing (there's nothing to resolve against).
+    """
+    vat = zero_pad_vat(piva_raw) if piva_raw else None
+    if vat is not None:
+        operator = operators.get(vat)
+        if operator is not None:
+            return operator.name, vat, SupplierNameSource.ARERA
+        placet_name = placet_names.get(vat)
+        if placet_name:
+            return placet_name, vat, SupplierNameSource.PLACET
+    domain = website_domain(url_sito_venditore)
+    if domain is not None:
+        return domain, vat, SupplierNameSource.DOMAIN
+    if vat is not None:
+        return f"P.IVA {vat}", vat, SupplierNameSource.VAT
+    return "sconosciuto", None, None
 
 
 class MliberoFormatError(ValueError):
@@ -421,11 +452,24 @@ def _band_structure_from_tipologia(code: str) -> BandStructure:
     }[TipologiaFasce(code)]
 
 
-def parse_offerta(el: ET.Element, params: Parameters) -> ParsedOffer:
+def parse_offerta(
+    el: ET.Element,
+    params: Parameters,
+    operators: dict[str, Operator] | None = None,
+    placet_names: dict[str, str] | None = None,
+) -> ParsedOffer:
     """Parse one ``<offerta>`` element into an :class:`Excluded` (unsupported
     structure, non-domestic, or any other unpriceable case -- always
     counted, never silently dropped) or an :class:`Offer`.
+
+    ``operators`` (the ARERA "Ricerca operatori" export, VAT -> name) and
+    ``placet_names`` (VAT -> PLACET ``denominazione``) resolve the
+    supplier display name, since the XML itself only carries
+    ``PIVA_UTENTE`` -- see ``_resolve_supplier_name`` and
+    ``bestbill.catalog.build``.
     """
+    operators = operators if operators is not None else {}
+    placet_names = placet_names if placet_names is not None else {}
     ident = el.find(f"{_NS}IdentificativiOfferta")
     offer_id = _text(ident, "COD_OFFERTA") if ident is not None else None
     if offer_id is None:
@@ -588,8 +632,10 @@ def parse_offerta(el: ET.Element, params: Parameters) -> ParsedOffer:
 
     contatti = dettaglio.find(f"{_NS}Contatti")
     url = None
+    url_sito_venditore = None
     if contatti is not None:
         url = _text(contatti, "URL_OFFERTA") or _text(contatti, "URL_SITO_VENDITORE")
+        url_sito_venditore = _text(contatti, "URL_SITO_VENDITORE")
 
     try:
         piva = (
@@ -597,9 +643,12 @@ def parse_offerta(el: ET.Element, params: Parameters) -> ParsedOffer:
             if ident is not None
             else ""
         )
+        supplier_name, supplier_vat, supplier_name_source = _resolve_supplier_name(
+            piva, url_sito_venditore, operators, placet_names
+        )
         offer = Offer(
             id=offer_id,
-            supplier=f"P.IVA {piva}" if piva else "sconosciuto",
+            supplier=supplier_name,
             name=_text(dettaglio, "NOME_OFFERTA") or offer_id,
             url=url,
             source=OfferSource.MLIBERO,
@@ -628,13 +677,20 @@ def parse_offerta(el: ET.Element, params: Parameters) -> ParsedOffer:
             consumption_max_kwh=consumo_max,
             valid_from=valid_from,
             valid_to=valid_to,
+            supplier_vat=supplier_vat,
+            supplier_name_source=supplier_name_source,
         )
     except ValueError as exc:
         return Excluded(offer_id, f"errore di validazione: {exc}")
     return offer
 
 
-def iter_mlibero_offers(path: str, params: Parameters) -> Iterator[ParsedOffer]:
+def iter_mlibero_offers(
+    path: str,
+    params: Parameters,
+    operators: dict[str, Operator] | None = None,
+    placet_names: dict[str, str] | None = None,
+) -> Iterator[ParsedOffer]:
     """Stream-parse the mercato libero XML, clearing elements as it goes to
     keep memory bounded on the ~20 MB file.
     """
@@ -643,11 +699,18 @@ def iter_mlibero_offers(path: str, params: Parameters) -> Iterator[ParsedOffer]:
     for event, elem in context:
         if event != "end" or _local(elem.tag) != "offerta":
             continue
-        parsed = parse_offerta(elem, params)
+        parsed = parse_offerta(
+            elem, params, operators=operators, placet_names=placet_names
+        )
         elem.clear()
         root.clear()
         yield parsed
 
 
-def parse_mlibero_file(path: str, params: Parameters) -> list[ParsedOffer]:
-    return list(iter_mlibero_offers(path, params))
+def parse_mlibero_file(
+    path: str,
+    params: Parameters,
+    operators: dict[str, Operator] | None = None,
+    placet_names: dict[str, str] | None = None,
+) -> list[ParsedOffer]:
+    return list(iter_mlibero_offers(path, params, operators, placet_names))

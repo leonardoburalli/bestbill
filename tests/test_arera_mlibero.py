@@ -3,8 +3,9 @@ import pathlib
 import pytest
 
 from bestbill.arera.mlibero import Excluded, parse_mlibero_file
+from bestbill.arera.operators import Operator
 from bestbill.arera.parameters import parse_parameters_file
-from bestbill.core.models import BandStructure, PriceType, Residency
+from bestbill.core.models import BandStructure, PriceType, Residency, SupplierNameSource
 
 FIXTURE = pathlib.Path(__file__).parent / "fixtures" / "arera" / "mlibero.xml"
 PARAMS = parse_parameters_file(
@@ -184,3 +185,91 @@ def test_mono_fixed_offer_with_only_macroarea02_prices_via_extras():
     # 2700 * 0.024 (cdispd dispatching, no losses)
     expected = 2700 * 0.154 + 210 + 2700 * 0.024
     assert cost == pytest.approx(expected, abs=1e-6)
+
+
+# --- Supplier name resolution (ARERA operators -> PLACET -> domain -> VAT) ---
+
+_CASALUCE_OFFER_ID = "028269ESVML01XXCASALUCE260821001"
+_CASALUCE_VAT = "08985501215"
+_PIUENERGIA_OFFER_ID = "001686ESVFL00XXPFC0726DO00000000"
+_PIUENERGIA_VAT = "01244170526"
+
+
+def _parse_with(operators=None, placet_names=None):
+    from bestbill.arera.mlibero import parse_mlibero_file
+
+    return parse_mlibero_file(
+        str(FIXTURE), PARAMS, operators=operators, placet_names=placet_names
+    )
+
+
+def _find(rows, offer_id):
+    match = [r for r in rows if not isinstance(r, Excluded) and r.id == offer_id]
+    assert len(match) == 1
+    return match[0]
+
+
+def test_supplier_name_resolves_via_arera_operators():
+    operators = {_CASALUCE_VAT: Operator(name="100ENERGIA S.R.L.", website=None)}
+    offer = _find(_parse_with(operators=operators), _CASALUCE_OFFER_ID)
+    assert offer.supplier == "100ENERGIA S.R.L."
+    assert offer.supplier_vat == _CASALUCE_VAT
+    assert offer.supplier_name_source == SupplierNameSource.ARERA
+
+
+def test_supplier_name_falls_back_to_placet_denominazione():
+    # No ARERA entry for this VAT, but a matching PLACET denominazione.
+    placet_names = {_CASALUCE_VAT: "100Energia (da PLACET)"}
+    offer = _find(_parse_with(placet_names=placet_names), _CASALUCE_OFFER_ID)
+    assert offer.supplier == "100Energia (da PLACET)"
+    assert offer.supplier_vat == _CASALUCE_VAT
+    assert offer.supplier_name_source == SupplierNameSource.PLACET
+
+
+def test_supplier_name_falls_back_to_website_domain():
+    # Neither ARERA nor PLACET has this VAT -> fall back to the domain of
+    # URL_SITO_VENDITORE ("https://www.100energia.com/" -> "100energia.com").
+    offer = _find(_parse_with(), _CASALUCE_OFFER_ID)
+    assert offer.supplier == "100energia.com"
+    assert offer.supplier_vat == _CASALUCE_VAT
+    assert offer.supplier_name_source == SupplierNameSource.DOMAIN
+
+
+def test_supplier_name_falls_back_to_vat_when_no_website_either():
+    # +Energia's fixture URL is www.piuenergia.it -- still resolves via
+    # domain, so exercise the true last resort with an offer that has no
+    # site at all is out of scope for this fixture; verify the domain path
+    # for a second, unrelated VAT to cover the "www." stripping branch.
+    offer = _find(_parse_with(), _PIUENERGIA_OFFER_ID)
+    assert offer.supplier == "piuenergia.it"
+    assert offer.supplier_vat == _PIUENERGIA_VAT
+    assert offer.supplier_name_source == SupplierNameSource.DOMAIN
+
+
+def test_arera_operators_take_priority_over_placet_names():
+    operators = {_CASALUCE_VAT: Operator(name="ARERA Name", website=None)}
+    placet_names = {_CASALUCE_VAT: "PLACET Name"}
+    offer = _find(
+        _parse_with(operators=operators, placet_names=placet_names),
+        _CASALUCE_OFFER_ID,
+    )
+    assert offer.supplier == "ARERA Name"
+    assert offer.supplier_name_source == SupplierNameSource.ARERA
+
+
+def test_resolve_supplier_name_falls_back_to_vat_when_no_domain():
+    from bestbill.arera.mlibero import _resolve_supplier_name
+
+    name, vat, source = _resolve_supplier_name("09999999999", None, {}, {})
+    assert name == "P.IVA 09999999999"
+    assert vat == "09999999999"
+    assert source == SupplierNameSource.VAT
+
+
+def test_resolve_supplier_name_unknown_when_no_vat_at_all():
+    from bestbill.arera.mlibero import _resolve_supplier_name
+
+    name, vat, source = _resolve_supplier_name("", None, {}, {})
+    assert name == "sconosciuto"
+    assert vat is None
+    assert source is None

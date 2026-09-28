@@ -15,6 +15,7 @@ from dataclasses import dataclass
 from datetime import date, datetime
 
 from bestbill.arera import policy
+from bestbill.arera.operators import zero_pad_vat
 from bestbill.arera.parameters import Parameters
 from bestbill.core.models import (
     BandStructure,
@@ -24,6 +25,7 @@ from bestbill.core.models import (
     OfferSource,
     PriceType,
     Residency,
+    SupplierNameSource,
 )
 
 _ENCODINGS_TO_TRY = ("utf-8-sig", "utf-8", "cp1252", "latin-1")
@@ -138,6 +140,9 @@ def parse_placet_rows(text: str, params: Parameters) -> Iterator[ParsedRow]:
 
         energy_price = price_keys if price_type is PriceType.FIXED else {}
 
+        raw_p_iva = row.get("p_iva", "").strip()
+        supplier_vat = zero_pad_vat(raw_p_iva) if raw_p_iva else None
+
         try:
             offer = Offer(
                 id=offer_id,
@@ -160,6 +165,8 @@ def parse_placet_rows(text: str, params: Parameters) -> Iterator[ParsedRow]:
                 dispatching_approximate=dispatching_result.approximate,
                 valid_from=_to_date(row.get("data_inizio", "")),
                 valid_to=_to_date(row.get("data_fine", "")),
+                supplier_vat=supplier_vat,
+                supplier_name_source=SupplierNameSource.PLACET,
             )
         except ValueError as exc:
             yield Excluded(offer_id, f"errore di validazione: {exc}")

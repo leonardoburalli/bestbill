@@ -27,7 +27,7 @@ def test_build_catalog_creates_sqlite_and_manifest(built_catalog):
     assert built_catalog.sqlite_path.exists()
     assert built_catalog.manifest_path.exists()
     manifest = json.loads(built_catalog.manifest_path.read_text(encoding="utf-8"))
-    assert manifest["schema_version"] == 2
+    assert manifest["schema_version"] == 3
     assert manifest["attribution"]
     assert manifest["counts"]["included"] > 0
 
@@ -113,3 +113,46 @@ def test_build_catalog_parameters_table_is_populated(built_catalog):
         assert count > 0
     finally:
         conn.close()
+
+
+@pytest.fixture()
+def built_catalog_with_operators(tmp_path):
+    return build_catalog(
+        placet_path=FIXTURES / "placet.csv",
+        mlibero_path=FIXTURES / "mlibero.xml",
+        indices_path=FIXTURES / "indices.csv",
+        params_ml_path=FIXTURES / "params_ml.csv",
+        params_e_path=FIXTURES / "params_e.csv",
+        operators_path=FIXTURES / "operators.xlsx",
+        out_dir=tmp_path / "catalog",
+    )
+
+
+def test_build_catalog_manifest_has_licence_and_sources(built_catalog):
+    manifest = built_catalog.manifest
+    assert manifest["licence"] == "CC-BY-SA-4.0"
+    assert isinstance(manifest["sources"], list)
+    names = {s["name"] for s in manifest["sources"]}
+    assert "ARERA – Ricerca operatori" in names
+    for source in manifest["sources"]:
+        assert source["licence"] in ("CC-BY-SA-4.0", "CC-BY-4.0")
+
+
+def test_build_catalog_manifest_has_supplier_names_counts(built_catalog):
+    counts = built_catalog.manifest["supplier_names"]
+    assert set(counts) == {"arera", "placet", "domain", "vat"}
+    assert sum(counts.values()) > 0
+
+
+def test_build_catalog_resolves_supplier_name_from_operators_export(
+    built_catalog_with_operators,
+):
+    from bestbill.catalog.store import CatalogStore
+
+    with CatalogStore(built_catalog_with_operators.sqlite_path) as store:
+        offers = store.offers(source="mlibero", limit=1000)
+    by_id = {o.id: o for o in offers}
+    offer = by_id["028269ESVML01XXCASALUCE260821001"]
+    assert offer.supplier == "100ENERGIA S.R.L."
+    assert offer.supplier_vat == "08985501215"
+    assert offer.supplier_name_source == "arera"

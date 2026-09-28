@@ -117,3 +117,61 @@ def test_fetch_with_fallback_retries_before_falling_back(tmp_path):
     )
     assert result.effective_date == date(2026, 9, 28)
     assert opener.attempts == 2
+
+
+class _MultiUrlOpener:
+    """Serves different fixed bytes per exact URL match."""
+
+    def __init__(self, responses: dict[str, bytes]):
+        self.responses = responses
+        self.calls: list[str] = []
+
+    def open(self, url: str, timeout: float = 30.0):  # noqa: ARG002
+        self.calls.append(url)
+        for key, content in self.responses.items():
+            if key in url:
+                return _FakeResponse(content)
+        raise OSError(f"not found: {url}")
+
+
+def test_fetch_operators_downloads_the_discovered_zip(tmp_path):
+    from bestbill.arera.fetch import fetch_operators
+    from bestbill.arera.operators import RICERCA_OPERATORI_URL
+
+    html = (
+        b'<a href="/fileadmin/ricercaoperatori/'
+        b'export-mercato-vend21_09_2026_09_35_02.zip">Scarica</a>'
+    )
+    opener = _MultiUrlOpener(
+        {
+            RICERCA_OPERATORI_URL: html,
+            "export-mercato-vend21_09_2026_09_35_02.zip": b"zip-content",
+        }
+    )
+
+    result = fetch_operators(tmp_path / "operators.zip", opener=opener)
+
+    assert result.read_bytes() == b"zip-content"
+    assert any("ricerca-operatori" in url for url in opener.calls)
+    assert any(
+        "export-mercato-vend21_09_2026_09_35_02.zip" in url for url in opener.calls
+    )
+
+
+def test_fetch_operators_raises_when_page_unreachable(tmp_path):
+    from bestbill.arera.fetch import fetch_operators
+
+    opener = _MultiUrlOpener({})
+
+    with pytest.raises(FetchError):
+        fetch_operators(tmp_path / "operators.zip", opener=opener)
+
+
+def test_fetch_operators_raises_when_link_not_found(tmp_path):
+    from bestbill.arera.fetch import fetch_operators
+    from bestbill.arera.operators import RICERCA_OPERATORI_URL
+
+    opener = _MultiUrlOpener({RICERCA_OPERATORI_URL: b"<html>no link</html>"})
+
+    with pytest.raises(FetchError):
+        fetch_operators(tmp_path / "operators.zip", opener=opener)

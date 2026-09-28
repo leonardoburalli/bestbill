@@ -24,7 +24,7 @@ def store(tmp_path):
 
 def test_meta_has_schema_version(store):
     meta = store.meta()
-    assert meta["schema_version"] == "2"
+    assert meta["schema_version"] == "3"
     assert "attribution" in meta
 
 
