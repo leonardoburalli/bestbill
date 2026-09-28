@@ -8,16 +8,23 @@ Data minimisation / licence: the export also carries addresses and contact
 details, but this importer reads and keeps **only** ``RAGIONE SOCIALE``
 (name), ``PARTITA IVA`` (VAT) and ``SITO WEB`` (website) -- see
 ``PROVENANCE.md``. The export is licensed CC BY-SA 4.0 (arera.it terms of
-use, "Riuso dei dati pubblici (Open Data) e copyright").
+use, "Riuso dei dati pubblici (Open Data) e copyright"). The catalogue
+pipeline never republishes the raw zip/xlsx (see ``.cicd/catalog.sh``):
+``bestbill.catalog.build`` writes the parsed name/VAT/website rows out to
+a minimised ``operators.csv`` (``write_operators_csv``), which is what
+gets published/cached; ``parse_operators_file`` accepts that csv back in,
+as well as the raw zip/xlsx, for the next day's fallback.
 """
 
 from __future__ import annotations
 
+import csv
 import io
 import re
 import urllib.parse
 import zipfile
 from dataclasses import dataclass
+from pathlib import Path
 
 import openpyxl
 
@@ -34,6 +41,11 @@ RICERCA_OPERATORI_URL = f"{ARERA_BASE_URL}/area-operatori/ricerca-operatori"
 #: Columns this importer reads from Sheet1 -- see the module docstring for
 #: why addresses/contacts (also present in the export) are never read.
 _REQUIRED_COLUMNS = ("RAGIONE SOCIALE", "PARTITA IVA", "SITO WEB")
+
+#: Column order/names of the minimised CSV we publish instead of the raw
+#: ARERA export (see ``write_operators_csv``/``parse_operators_csv``):
+#: name, VAT and website only -- never addresses or contact details.
+CSV_COLUMNS = ("partita_iva", "ragione_sociale", "sito_web")
 
 _VAT_LENGTH = 11
 
@@ -142,11 +154,55 @@ def parse_operators_zip(raw: bytes) -> dict[str, Operator]:
     return parse_operators_xlsx(xlsx_bytes)
 
 
-def parse_operators_file(path: str) -> dict[str, Operator]:
-    """Parse either a ``.zip`` export or a bare ``.xlsx`` file (``--operators
-    <zip|xlsx>`` on ``bestbill catalog build``)."""
+def parse_operators_csv(raw: bytes) -> dict[str, Operator]:
+    """Parse the minimised ``operators.csv`` this pipeline publishes (see
+    ``write_operators_csv``): UTF-8, header ``partita_iva,ragione_sociale,
+    sito_web``, one row per operator, VAT already zero-padded.
+    """
+    text = raw.decode("utf-8-sig")
+    reader = csv.DictReader(io.StringIO(text))
+    missing = [c for c in CSV_COLUMNS if c not in (reader.fieldnames or [])]
+    if missing:
+        raise OperatorsFormatError(
+            f"operators csv is missing column(s) {missing}; found {reader.fieldnames}"
+        )
+    operators: dict[str, Operator] = {}
+    for row in reader:
+        raw_name = row.get("ragione_sociale")
+        raw_vat = row.get("partita_iva")
+        if not raw_name or not raw_vat:
+            continue
+        vat = zero_pad_vat(raw_vat)
+        website = (row.get("sito_web") or "").strip() or None
+        operators[vat] = Operator(name=raw_name.strip(), website=website)
+    return operators
+
+
+def write_operators_csv(operators: dict[str, Operator], path: str | Path) -> None:
+    """Write the minimised ``operators.csv`` we publish instead of the raw
+    ARERA zip/xlsx: only ``partita_iva``, ``ragione_sociale`` and
+    ``sito_web``, UTF-8, one row per operator actually parsed (see the
+    module docstring's data-minimisation note and PROVENANCE.md).
+    """
+    path = Path(path)
+    with path.open("w", newline="", encoding="utf-8") as f:
+        writer = csv.writer(f)
+        writer.writerow(CSV_COLUMNS)
+        for vat in sorted(operators):
+            operator = operators[vat]
+            writer.writerow([vat, operator.name, operator.website or ""])
+
+
+def parse_operators_file(path: str | Path) -> dict[str, Operator]:
+    """Parse an ARERA operators export -- ``.zip``, bare ``.xlsx`` or the
+    minimised ``.csv`` this pipeline publishes (``--operators
+    <zip|xlsx|csv>`` on ``bestbill catalog build``)."""
+    path = str(path)
     with open(path, "rb") as f:
         raw = f.read()
-    if path.lower().endswith(".zip"):
+    lowered = path.lower()
+    if lowered.endswith(".zip"):
         return parse_operators_zip(raw)
+    if lowered.endswith(".csv"):
+        return parse_operators_csv(raw)
     return parse_operators_xlsx(raw)

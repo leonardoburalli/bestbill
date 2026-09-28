@@ -156,3 +156,36 @@ def test_build_catalog_resolves_supplier_name_from_operators_export(
     assert offer.supplier == "100ENERGIA S.R.L."
     assert offer.supplier_vat == "08985501215"
     assert offer.supplier_name_source == "arera"
+
+
+def test_build_catalog_publishes_minimised_operators_csv(
+    built_catalog_with_operators,
+):
+    import csv
+
+    csv_path = built_catalog_with_operators.operators_csv_path
+    assert csv_path is not None
+    assert csv_path == built_catalog_with_operators.sqlite_path.parent / "operators.csv"
+    assert csv_path.exists()
+
+    with csv_path.open(encoding="utf-8") as f:
+        header = next(csv.reader(f))
+    assert tuple(header) == ("partita_iva", "ragione_sociale", "sito_web")
+
+    manifest = built_catalog_with_operators.manifest
+    assert "operators.csv" in manifest["files"]
+    arera_source = next(
+        s for s in manifest["sources"] if s["name"] == "ARERA – Ricerca operatori"
+    )
+    assert arera_source["file"] == "operators.csv"
+
+
+def test_build_catalog_output_dir_has_no_raw_operators_export(
+    built_catalog_with_operators, built_catalog
+):
+    for result in (built_catalog_with_operators, built_catalog):
+        out_dir = result.sqlite_path.parent
+        raw_files = [
+            p for p in out_dir.iterdir() if p.suffix.lower() in (".zip", ".xlsx")
+        ]
+        assert raw_files == []

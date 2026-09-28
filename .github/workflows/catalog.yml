@@ -38,23 +38,23 @@ jobs:
           mkdir -p build/previous
           gh release download catalog-latest -p manifest.json -D build/previous \
             --repo "${{ github.repository }}" || true
-          gh release download catalog-latest -p operators.zip -D build/previous \
+          gh release download catalog-latest -p operators.csv -D build/previous \
             --repo "${{ github.repository }}" || true
 
       - name: Build and validate the catalogue
         env:
           PREVIOUS_MANIFEST: build/previous/manifest.json
-          PREVIOUS_OPERATORS: build/previous/operators.zip
+          PREVIOUS_OPERATORS: build/previous/operators.csv
         run: .cicd/catalog.sh
 
       - name: Upload catalogue as a workflow artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: catalog
           path: |
             build/catalog/catalog.sqlite
             build/catalog/manifest.json
-            build/catalog/operators.zip
+            build/catalog/operators.csv
           retention-days: 7
 
       - name: Publish to the catalog-latest release
@@ -71,8 +71,8 @@ jobs:
               --latest=false
           fi
           ASSETS=(build/catalog/catalog.sqlite build/catalog/manifest.json)
-          if [[ -f build/catalog/operators.zip ]]; then
-            ASSETS+=(build/catalog/operators.zip)
+          if [[ -f build/catalog/operators.csv ]]; then
+            ASSETS+=(build/catalog/operators.csv)
           fi
           gh release upload catalog-latest \
             "${ASSETS[@]}" \

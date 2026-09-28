@@ -14,7 +14,11 @@ from bestbill.arera import policy
 from bestbill.arera.indices import parse_indices_file
 from bestbill.arera.mlibero import Excluded as MliberoExcluded
 from bestbill.arera.mlibero import iter_mlibero_offers
-from bestbill.arera.operators import RICERCA_OPERATORI_URL, parse_operators_file
+from bestbill.arera.operators import (
+    RICERCA_OPERATORI_URL,
+    parse_operators_file,
+    write_operators_csv,
+)
 from bestbill.arera.parameters import Parameters, parse_parameters_file
 from bestbill.arera.placet import Excluded as PlacetExcluded
 from bestbill.arera.placet import parse_placet_file
@@ -97,6 +101,7 @@ class BuildResult:
     sqlite_path: Path
     manifest_path: Path
     manifest: dict[str, Any]
+    operators_csv_path: Path | None = None
 
 
 def _reference_profile(pun: PunSeries) -> tuple[ConsumptionProfile, PunSeries]:
@@ -167,6 +172,14 @@ def build_catalog(
     operators = (
         parse_operators_file(str(operators_path)) if operators_path is not None else {}
     )
+
+    # Data minimisation / republishing (see PROVENANCE.md): we never
+    # publish the raw ARERA zip/xlsx (addresses + customer contacts), only
+    # this minimised name/VAT/website csv, written next to catalog.sqlite.
+    operators_csv_path: Path | None = None
+    if operators_path is not None:
+        operators_csv_path = out_dir / "operators.csv"
+        write_operators_csv(operators, operators_csv_path)
 
     offers: list[Offer] = []
     excluded: list[tuple[str, str, str]] = []
@@ -317,6 +330,9 @@ def build_catalog(
             "url": RICERCA_OPERATORI_URL,
             "licence": "CC-BY-SA-4.0",
             "file_date": snapshot_date.isoformat() if operators_path else None,
+            "file": (
+                operators_csv_path.name if operators_csv_path is not None else None
+            ),
         },
         {
             "name": "Portale Offerte – PLACET",
@@ -377,11 +393,19 @@ def build_catalog(
         "licence": CATALOGUE_LICENCE,
         "sources": sources,
         "attribution": ATTRIBUTION,
+        "files": [
+            path.name
+            for path in (sqlite_path, manifest_path, operators_csv_path)
+            if path is not None
+        ],
     }
     manifest_path.write_text(
         json.dumps(manifest, indent=2, ensure_ascii=False), encoding="utf-8"
     )
 
     return BuildResult(
-        sqlite_path=sqlite_path, manifest_path=manifest_path, manifest=manifest
+        sqlite_path=sqlite_path,
+        manifest_path=manifest_path,
+        manifest=manifest,
+        operators_csv_path=operators_csv_path,
     )

@@ -40,7 +40,13 @@ SEDE LEGALE | INDIRIZZO | SITO WEB | CONTATTI CLIENTE | CONTATTI CLIENTE
 2`, 734 rows as of 2026-09-21). This importer reads **only** `RAGIONE
 SOCIALE`, `PARTITA IVA` and `SITO WEB` — addresses and contact details are
 never stored or published (data-minimisation decision, see
-PROVENANCE.md). `PARTITA IVA` is zero-padded to 11 digits (openpyxl can
+PROVENANCE.md). The catalogue pipeline never republishes the raw
+zip/xlsx either: `bestbill.catalog.build` writes the parsed rows to a
+minimised `operators.csv` (`partita_iva,ragione_sociale,sito_web`, UTF-8,
+next to `catalog.sqlite`), which is what `.cicd/catalog.sh`/
+`.github/workflows/catalog.yml` publish and cache for the next day's
+fallback (`bestbill.arera.operators.write_operators_csv`/
+`parse_operators_csv`). `PARTITA IVA` is zero-padded to 11 digits (openpyxl can
 hand back a bare number for a numeric-looking VAT); names may have
 trailing spaces (e.g. `"+Energia "`), stripped at parse time. See
 `docs/pricing-policy.md` "Supplier name resolution" for the full name

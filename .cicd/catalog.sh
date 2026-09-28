@@ -2,9 +2,15 @@
 # Daily data pipeline: fetch ARERA source files -> build catalog.sqlite ->
 # validate. Set PREVIOUS_MANIFEST to a manifest.json path to enable the
 # count-change gate against the last published snapshot. Set
-# PREVIOUS_OPERATORS to a cached operators.zip to fall back to it if
-# today's ARERA "Ricerca operatori" fetch fails (see
-# bestbill.arera.fetch.fetch_operators).
+# PREVIOUS_OPERATORS to a cached, minimised operators.csv
+# (build/previous/operators.csv) to fall back to it if today's ARERA
+# "Ricerca operatori" fetch fails (see bestbill.arera.fetch.fetch_operators).
+#
+# Data minimisation (see PROVENANCE.md): the raw ARERA export (zip/xlsx)
+# carries addresses and customer contacts and is only ever kept under
+# ${RAW_DIR}, which is never copied to ${OUT_DIR} or published. The build
+# writes a minimised operators.csv (partita_iva/ragione_sociale/sito_web
+# only) into ${OUT_DIR}; that's what gets published/cached instead.
 # shellcheck source-path=SCRIPTDIR
 source "$(dirname "$0")/lib.sh"
 
@@ -15,10 +21,12 @@ DATE="${SNAPSHOT_DATE:-$(date -u +%Y-%m-%d)}"
 step "Fetch ARERA source files" \
   uv run bestbill catalog fetch --date "${DATE}" --out "${RAW_DIR}"
 
-if [[ ! -f "${RAW_DIR}/operators.zip" && -n "${PREVIOUS_OPERATORS:-}" \
-      && -f "${PREVIOUS_OPERATORS}" ]]; then
+OPERATORS_ARG=""
+if [[ -f "${RAW_DIR}/operators.zip" ]]; then
+  OPERATORS_ARG="${RAW_DIR}/operators.zip"
+elif [[ -n "${PREVIOUS_OPERATORS:-}" && -f "${PREVIOUS_OPERATORS}" ]]; then
   echo "Falling back to the previous snapshot's cached operators export"
-  cp "${PREVIOUS_OPERATORS}" "${RAW_DIR}/operators.zip"
+  OPERATORS_ARG="${PREVIOUS_OPERATORS}"
 fi
 
 BUILD_ARGS=(
@@ -32,13 +40,9 @@ BUILD_ARGS=(
 if [[ -n "${PREVIOUS_MANIFEST:-}" && -f "${PREVIOUS_MANIFEST}" ]]; then
   BUILD_ARGS+=(--previous-manifest "${PREVIOUS_MANIFEST}")
 fi
-if [[ -f "${RAW_DIR}/operators.zip" ]]; then
-  BUILD_ARGS+=(--operators "${RAW_DIR}/operators.zip")
+if [[ -n "${OPERATORS_ARG}" ]]; then
+  BUILD_ARGS+=(--operators "${OPERATORS_ARG}")
 fi
 
 step "Build and validate the catalogue" \
   uv run bestbill catalog build "${BUILD_ARGS[@]}"
-
-if [[ -f "${RAW_DIR}/operators.zip" ]]; then
-  cp "${RAW_DIR}/operators.zip" "${OUT_DIR}/operators.zip"
-fi

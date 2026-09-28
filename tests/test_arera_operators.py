@@ -4,11 +4,16 @@ import pytest
 
 from bestbill.arera.operators import (
     ARERA_BASE_URL,
+    CSV_COLUMNS,
+    Operator,
     OperatorsFormatError,
     discover_export_url,
+    parse_operators_csv,
+    parse_operators_file,
     parse_operators_xlsx,
     parse_operators_zip,
     website_domain,
+    write_operators_csv,
     zero_pad_vat,
 )
 
@@ -104,3 +109,63 @@ def test_website_domain_handles_missing_or_empty():
     assert website_domain(None) is None
     assert website_domain("") is None
     assert website_domain("   ") is None
+
+
+def test_write_operators_csv_has_exactly_the_minimised_columns(tmp_path):
+    operators = {
+        "01244170526": Operator(name="+Energia", website="http://www.piuenergia.it"),
+        "08985501215": Operator(name="100ENERGIA S.R.L.", website=None),
+    }
+    csv_path = tmp_path / "operators.csv"
+    write_operators_csv(operators, csv_path)
+
+    import csv
+
+    with csv_path.open(encoding="utf-8") as f:
+        reader = csv.reader(f)
+        header = next(reader)
+        rows = list(reader)
+
+    expected = ("partita_iva", "ragione_sociale", "sito_web")
+    assert tuple(header) == CSV_COLUMNS == expected
+    assert len(rows) == len(operators)
+    assert all(len(row) == 3 for row in rows)
+
+
+def test_write_operators_csv_omits_addresses_and_contacts(tmp_path):
+    # The Operator model itself only ever carries name + website, so this
+    # is really asserting the csv has no extra columns beyond CSV_COLUMNS
+    # -- see test_write_operators_csv_has_exactly_the_minimised_columns.
+    operators = {"12345678901": Operator(name="ACME ENERGIA SPA", website=None)}
+    csv_path = tmp_path / "operators.csv"
+    write_operators_csv(operators, csv_path)
+
+    header = csv_path.read_text(encoding="utf-8").splitlines()[0]
+    columns = header.split(",")
+    assert set(columns) == {"partita_iva", "ragione_sociale", "sito_web"}
+
+
+def test_parse_operators_csv_round_trips_write_operators_csv(tmp_path):
+    operators = {
+        "01244170526": Operator(name="+Energia", website="http://www.piuenergia.it"),
+        "08985501215": Operator(name="100ENERGIA S.R.L.", website=None),
+    }
+    csv_path = tmp_path / "operators.csv"
+    write_operators_csv(operators, csv_path)
+
+    parsed = parse_operators_csv(csv_path.read_bytes())
+    assert parsed == operators
+
+
+def test_parse_operators_file_dispatches_on_csv_extension(tmp_path):
+    operators = {"01244170526": Operator(name="+Energia", website=None)}
+    csv_path = tmp_path / "operators.csv"
+    write_operators_csv(operators, csv_path)
+
+    parsed = parse_operators_file(csv_path)
+    assert parsed == operators
+
+
+def test_parse_operators_csv_missing_required_column_raises():
+    with pytest.raises(OperatorsFormatError):
+        parse_operators_csv(b"partita_iva,ragione_sociale\n123,Foo\n")
