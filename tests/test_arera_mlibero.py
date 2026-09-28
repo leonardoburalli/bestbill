@@ -1,21 +1,25 @@
 import pathlib
 
 from bestbill.arera.mlibero import Excluded, parse_mlibero_file
+from bestbill.arera.parameters import parse_parameters_file
 from bestbill.core.models import BandStructure, PriceType, Residency
 
 FIXTURE = pathlib.Path(__file__).parent / "fixtures" / "arera" / "mlibero.xml"
+PARAMS = parse_parameters_file(
+    str(pathlib.Path(__file__).parent / "fixtures" / "arera" / "params_ml.csv")
+)
 
 
 def _parsed():
-    return parse_mlibero_file(str(FIXTURE))
+    return parse_mlibero_file(str(FIXTURE), PARAMS)
 
 
 def test_mlibero_fixture_parses_expected_counts():
     rows = _parsed()
     offers = [r for r in rows if not isinstance(r, Excluded)]
     excluded = [r for r in rows if isinstance(r, Excluded)]
-    assert len(offers) == 9
-    assert len(excluded) == 3
+    assert len(offers) == 10
+    assert len(excluded) == 2
     assert all(o.customer.value == "domestic" for o in offers)
 
 
@@ -26,10 +30,9 @@ def test_mlibero_dual_fuel_excluded_with_reason():
     assert "dual-fuel" in reasons
 
 
-def test_mlibero_unsupported_idx_and_fasce_excluded():
+def test_mlibero_unsupported_fasce_excluded():
     rows = _parsed()
     reasons = [r.reason for r in rows if isinstance(r, Excluded)]
-    assert any("IDX_PREZZO_ENERGIA" in r for r in reasons)
     assert any("TIPOLOGIA_FASCE" in r for r in reasons)
 
 

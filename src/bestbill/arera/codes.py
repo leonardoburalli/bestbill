@@ -83,8 +83,11 @@ class FasciaComponente(StrEnum):
 
 
 class IdxPrezzoEnergia(StrEnum):
-    """official (12); 01/05 *official* per docs/arera-data.md; 08
-    *inferred* (observed in the data, meaning not verified).
+    """official (12); 01 *official* per docs/pricing-policy.md -- treated
+    as the monthly PUN index, same as 12 (see
+    ``bestbill.arera.policy.SUPPORTED_IDX_CODES``); 05 Maggior Tutela
+    (excluded, see policy.MAGGIOR_TUTELA_REASON); 08 *inferred* (observed
+    in the data, meaning not verified, excluded).
     """
 
     ALTRO_01 = "01"

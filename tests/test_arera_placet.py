@@ -1,20 +1,24 @@
 import pathlib
 
+from bestbill.arera.parameters import parse_parameters_file
 from bestbill.arera.placet import Excluded, parse_placet_file
 from bestbill.core.models import BandStructure, PriceType
 
 FIXTURE = pathlib.Path(__file__).parent / "fixtures" / "arera" / "placet.csv"
+PARAMS = parse_parameters_file(
+    str(pathlib.Path(__file__).parent / "fixtures" / "arera" / "params_e.csv")
+)
 
 
 def test_placet_fixture_parses_only_domestic_rows():
-    rows = parse_placet_file(str(FIXTURE))
+    rows = parse_placet_file(str(FIXTURE), PARAMS)
     offers = [r for r in rows if not isinstance(r, Excluded)]
     assert len(offers) == 17
     assert all(o.customer.value == "domestic" for o in offers)
 
 
 def test_placet_fixed_f1f23_offer_fields():
-    rows = parse_placet_file(str(FIXTURE))
+    rows = parse_placet_file(str(FIXTURE), PARAMS)
     offers = {r.id: r for r in rows if not isinstance(r, Excluded)}
     offer = offers["028269ESFMP01XXPLACLFISDOM260812"]
     assert offer.price_type is PriceType.FIXED
@@ -25,7 +29,7 @@ def test_placet_fixed_f1f23_offer_fields():
 
 
 def test_placet_variable_offer_without_p_vol_defaults_to_mono_spread():
-    rows = parse_placet_file(str(FIXTURE))
+    rows = parse_placet_file(str(FIXTURE), PARAMS)
     offers = {r.id: r for r in rows if not isinstance(r, Excluded)}
     offer = offers["028269ESVMP01XXPLACLVARDOM260812"]
     assert offer.price_type is PriceType.VARIABLE
@@ -38,14 +42,14 @@ def test_placet_variable_offer_without_p_vol_defaults_to_mono_spread():
 
 
 def test_placet_geo_restricted_offer_has_geo():
-    rows = parse_placet_file(str(FIXTURE))
+    rows = parse_placet_file(str(FIXTURE), PARAMS)
     offers = {r.id: r for r in rows if not isinstance(r, Excluded)}
     geo_offer = next(o for o in offers.values() if o.geo is not None)
     assert geo_offer.geo.comuni or geo_offer.geo.province or geo_offer.geo.regioni
 
 
 def test_placet_dates_parsed():
-    rows = parse_placet_file(str(FIXTURE))
+    rows = parse_placet_file(str(FIXTURE), PARAMS)
     offers = {r.id: r for r in rows if not isinstance(r, Excluded)}
     offer = offers["028269ESFMP01XXPLACLFISDOM260812"]
     assert offer.valid_from is not None
@@ -64,7 +68,7 @@ _HEADER = (
 def _rows(csv_text: str):
     from bestbill.arera.placet import parse_placet_rows
 
-    return list(parse_placet_rows(_HEADER + csv_text))
+    return list(parse_placet_rows(_HEADER + csv_text, PARAMS))
 
 
 def test_placet_unsupported_tipo_offerta_excluded():
@@ -113,6 +117,6 @@ def test_placet_decode_falls_back_to_cp1252():
         _HEADER
         + "Alfa città,,,,,Nome,ID6,,,,,,domestico,prezzo fisso,300,,,,,,,0.1,,,,\n"
     ).encode("cp1252")
-    result = list(parse_placet_bytes(raw))
+    result = list(parse_placet_bytes(raw, PARAMS))
     assert len(result) == 1
     assert not isinstance(result[0], Excluded)

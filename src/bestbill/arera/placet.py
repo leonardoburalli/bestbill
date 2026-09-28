@@ -15,6 +15,7 @@ from dataclasses import dataclass
 from datetime import date, datetime
 
 from bestbill.arera import policy
+from bestbill.arera.parameters import Parameters
 from bestbill.core.models import (
     BandStructure,
     CustomerType,
@@ -80,7 +81,7 @@ def _geo(row: dict[str, str]) -> GeoRestriction | None:
     return GeoRestriction(regioni=regioni, province=province, comuni=comuni)
 
 
-def parse_placet_rows(text: str) -> Iterator[ParsedRow]:
+def parse_placet_rows(text: str, params: Parameters) -> Iterator[ParsedRow]:
     reader = csv.DictReader(io.StringIO(text))
     for row in reader:
         offer_id = row.get("cod_offerta", "").strip() or row.get("nome_offerta", "?")
@@ -94,6 +95,12 @@ def parse_placet_rows(text: str) -> Iterator[ParsedRow]:
             price_type = PriceType.VARIABLE
         else:
             yield Excluded(offer_id, f"tipo_offerta non supportato: {tipo_offerta!r}")
+            continue
+
+        dispatching_result, disp_reason = policy.placet_domestic_dispatching(params)
+        if dispatching_result is None:
+            assert disp_reason is not None
+            yield Excluded(offer_id, disp_reason)
             continue
 
         p_vol_bf1 = _to_float(row.get("p_vol_bf1", ""))
@@ -143,6 +150,10 @@ def parse_placet_rows(text: str) -> Iterator[ParsedRow]:
                 residency=Residency.ANY,
                 geo=_geo(row),
                 losses_mode=policy.losses_mode(OfferSource.PLACET, price_type),
+                dispatching_eur_kwh=dispatching_result.eur_kwh,
+                dispatching_eur_year=dispatching_result.eur_year,
+                dispatching_breakdown=dispatching_result.breakdown,
+                dispatching_approximate=dispatching_result.approximate,
                 valid_from=_to_date(row.get("data_inizio", "")),
                 valid_to=_to_date(row.get("data_fine", "")),
             )
@@ -152,11 +163,11 @@ def parse_placet_rows(text: str) -> Iterator[ParsedRow]:
         yield offer
 
 
-def parse_placet_bytes(raw: bytes) -> Iterator[ParsedRow]:
-    yield from parse_placet_rows(_decode(raw))
+def parse_placet_bytes(raw: bytes, params: Parameters) -> Iterator[ParsedRow]:
+    yield from parse_placet_rows(_decode(raw), params)
 
 
-def parse_placet_file(path: str) -> list[ParsedRow]:
+def parse_placet_file(path: str, params: Parameters) -> list[ParsedRow]:
     with open(path, "rb") as f:
         raw = f.read()
-    return list(parse_placet_bytes(raw))
+    return list(parse_placet_bytes(raw, params))

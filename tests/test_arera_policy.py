@@ -1,3 +1,5 @@
+import pytest
+
 from bestbill.arera import policy
 from bestbill.core.models import Discount, DiscountUnit, DiscountValidity, PriceType
 
@@ -35,6 +37,16 @@ def test_classify_component_one_off():
     assert role == policy.ComponentRole.ONE_OFF
 
 
+def test_classify_component_macroarea_01_one_off():
+    role, _ = policy.classify_component("01", "05", PriceType.FIXED)
+    assert role == policy.ComponentRole.ONE_OFF
+
+
+def test_classify_component_macroarea_06_fixed_fee():
+    role, _ = policy.classify_component("06", "01", PriceType.FIXED)
+    assert role == policy.ComponentRole.FIXED_FEE
+
+
 def test_classify_component_power_fee_regardless_of_macroarea():
     role, _ = policy.classify_component("04", "02", PriceType.FIXED)
     assert role == policy.ComponentRole.POWER_FEE
@@ -64,8 +76,9 @@ def test_dispatching_code_13_is_fixed_fee():
 
 def test_idx_support():
     assert policy.idx_is_supported("12")
-    assert not policy.idx_is_supported("01")
+    assert policy.idx_is_supported("01")
     assert not policy.idx_is_supported("08")
+    assert not policy.idx_is_supported("05")
 
 
 def test_tipologia_fasce_support():
@@ -101,7 +114,7 @@ def test_discount_annual_value_eur_year():
         unit=DiscountUnit.EUR_YEAR,
     )
     assert (
-        policy.discount_annual_value_eur(d, total_kwh=1000, energy_cost_eur=200) == 50.0
+        policy.discount_annual_value_eur(d, total_kwh=1000, energy_base_eur=200) == 50.0
     )
 
 
@@ -114,7 +127,7 @@ def test_discount_annual_value_eur_kwh():
         unit=DiscountUnit.EUR_KWH,
     )
     assert (
-        policy.discount_annual_value_eur(d, total_kwh=1000, energy_cost_eur=200) == 10.0
+        policy.discount_annual_value_eur(d, total_kwh=1000, energy_base_eur=200) == 10.0
     )
 
 
@@ -127,7 +140,7 @@ def test_discount_annual_value_percent():
         unit=DiscountUnit.PERCENT,
     )
     assert (
-        policy.discount_annual_value_eur(d, total_kwh=1000, energy_cost_eur=200) == 20.0
+        policy.discount_annual_value_eur(d, total_kwh=1000, energy_base_eur=200) == 20.0
     )
 
 
@@ -140,7 +153,7 @@ def test_discount_annual_value_zero_when_not_priced():
         unit=DiscountUnit.EUR_YEAR,
     )
     assert (
-        policy.discount_annual_value_eur(d, total_kwh=1000, energy_cost_eur=200) == 0.0
+        policy.discount_annual_value_eur(d, total_kwh=1000, energy_base_eur=200) == 0.0
     )
 
 
@@ -167,3 +180,17 @@ def test_losses_mode_placet_variable_is_index_and_spread():
         policy.losses_mode(OfferSource.PLACET, PriceType.VARIABLE)
         is LossesMode.INDEX_AND_SPREAD
     )
+
+
+def test_idx_maggior_tutela():
+    assert policy.idx_is_maggior_tutela("05")
+    assert not policy.idx_is_maggior_tutela("12")
+
+
+def test_discount_nominal_to_pre_vat_converts_post_vat():
+    assert policy.discount_nominal_to_pre_vat(11.0, "02") == pytest.approx(10.0)
+
+
+def test_discount_nominal_to_pre_vat_keeps_pre_vat_unchanged():
+    assert policy.discount_nominal_to_pre_vat(10.0, "01") == 10.0
+    assert policy.discount_nominal_to_pre_vat(10.0, None) == 10.0

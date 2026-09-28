@@ -19,6 +19,7 @@ from datetime import date, datetime
 
 from bestbill.arera import policy
 from bestbill.arera.codes import TipologiaFasce
+from bestbill.arera.parameters import Parameters
 from bestbill.core.models import (
     BandStructure,
     CustomerType,
@@ -31,6 +32,9 @@ from bestbill.core.models import (
 )
 
 _NS = "{http://www.acquirenteunico.it/schemas/SII_AU/OffertaRetail/01}"
+
+#: Sconto/PrezziSconto/TIPOLOGIA code meaning "discount on Maggior Tutela".
+_SCONTO_TIPOLOGIA_MAGGIOR_TUTELA = "04"
 
 
 class MliberoFormatError(ValueError):
@@ -181,26 +185,35 @@ def _power_fee(el: ET.Element) -> float:
     return total
 
 
-def _dispacciamento_extras_and_fee(el: ET.Element) -> tuple[float, float]:
-    extras = 0.0
-    fee = 0.0
+def _dispatching(
+    el: ET.Element, customer: CustomerType, params: Parameters
+) -> tuple[policy.DispatchingResult, None] | tuple[None, str]:
+    """Combine every Dispacciamento row on the offer (additive by
+    construction). Returns an exclusion reason if any row is Maggior
+    Tutela, reserved for non-domestic offers, or missing a parameter.
+    """
+    results: list[policy.DispatchingResult] = []
     for disp in el.findall(f"{_NS}Dispacciamento"):
         tipo = _text(disp, "TIPO_DISPACCIAMENTO")
         valore = _to_float(_text(disp, "VALORE_DISP"))
         if tipo is None:
             continue
-        result = policy.dispatching_component(tipo, valore)
+        result, reason = policy.dispatching_component_v2(
+            tipo, valore, params, customer=customer
+        )
         if result is None:
-            continue
-        role, amount = result
-        if role == policy.ComponentRole.FIXED_FEE:
-            fee += amount
-        else:
-            extras += amount
-    return extras, fee
+            assert reason is not None
+            return None, reason
+        results.append(result)
+    return policy.combine_dispatching(results), None
 
 
-def _parse_discounts(el: ET.Element) -> list[Discount]:
+def _parse_discounts(
+    el: ET.Element,
+) -> tuple[list[Discount], str | None]:
+    """Returns ``(discounts, exclusion_reason)``; a Sconto/PrezziSconto
+    TIPOLOGIA 04 (Maggior Tutela) excludes the whole offer.
+    """
     discounts: list[Discount] = []
     for sconto in el.findall(f"{_NS}Sconto"):
         name = _text(sconto, "NOME") or ""
@@ -217,8 +230,10 @@ def _parse_discounts(el: ET.Element) -> list[Discount]:
         )
         conditional = condizione_code != "00"
         iva_code = _text(sconto, "IVA_SCONTO")
-        applies_before_vat = iva_code != "02"
         for prezzo_sconto in sconto.findall(f"{_NS}PrezziSconto"):
+            tipologia = _text(prezzo_sconto, "TIPOLOGIA")
+            if tipologia == _SCONTO_TIPOLOGIA_MAGGIOR_TUTELA:
+                return [], policy.MAGGIOR_TUTELA_REASON
             unita = _text(prezzo_sconto, "UNITA_MISURA")
             prezzo = _to_float(_text(prezzo_sconto, "PREZZO"))
             if unita is None or prezzo is None:
@@ -229,12 +244,12 @@ def _parse_discounts(el: ET.Element) -> list[Discount]:
                     description=description,
                     validity=validity,
                     conditional=conditional,
-                    amount=prezzo,
+                    amount=policy.discount_nominal_to_pre_vat(prezzo, iva_code),
                     unit=policy.unita_misura_to_discount_unit(unita),
-                    applies_before_vat=applies_before_vat,
+                    applies_before_vat=True,
                 )
             )
-    return discounts
+    return discounts, None
 
 
 def _band_structure_from_tipologia(code: str) -> BandStructure:
@@ -245,7 +260,7 @@ def _band_structure_from_tipologia(code: str) -> BandStructure:
     }[TipologiaFasce(code)]
 
 
-def parse_offerta(el: ET.Element) -> ParsedOffer | None:
+def parse_offerta(el: ET.Element, params: Parameters) -> ParsedOffer | None:
     """Parse one ``<offerta>`` element. Returns ``None`` if the offer is
     out of MVP scope (non-domestic), an :class:`Excluded` if it has an
     unsupported structure, or an :class:`Offer`.
@@ -259,9 +274,10 @@ def parse_offerta(el: ET.Element) -> ParsedOffer | None:
     if dettaglio is None:
         return Excluded(offer_id, "DettaglioOfferta mancante")
 
-    tipo_cliente = _text(dettaglio, "TIPO_CLIENTE")
-    if tipo_cliente != "01":
+    tipo_cliente_code = _text(dettaglio, "TIPO_CLIENTE")
+    if tipo_cliente_code != "01":
         return None  # non-domestic: out of MVP scope, not "excluded"
+    customer = CustomerType.DOMESTIC
 
     offerta_singola = _text(dettaglio, "OFFERTA_SINGOLA")
     if offerta_singola == "NO":
@@ -280,6 +296,8 @@ def parse_offerta(el: ET.Element) -> ParsedOffer | None:
     if price_type is PriceType.VARIABLE:
         idx_el = el.find(f"{_NS}RiferimentiPrezzoEnergia")
         idx_code = _text(idx_el, "IDX_PREZZO_ENERGIA") if idx_el is not None else None
+        if idx_code is not None and policy.idx_is_maggior_tutela(idx_code):
+            return Excluded(offer_id, policy.MAGGIOR_TUTELA_REASON)
         if idx_code is None or not policy.idx_is_supported(idx_code):
             return Excluded(
                 offer_id, f"IDX_PREZZO_ENERGIA non supportato: {idx_code!r}"
@@ -303,10 +321,15 @@ def parse_offerta(el: ET.Element) -> ParsedOffer | None:
     if reason is not None:
         return Excluded(offer_id, reason)
 
-    disp_extras, disp_fee = _dispacciamento_extras_and_fee(el)
-    extras += disp_extras
-    fixed_fee += disp_fee
+    dispatching_result, disp_reason = _dispatching(el, customer, params)
+    if dispatching_result is None:
+        assert disp_reason is not None
+        return Excluded(offer_id, disp_reason)
     power_fee = _power_fee(el)
+
+    discounts, discount_reason = _parse_discounts(el)
+    if discount_reason is not None:
+        return Excluded(offer_id, discount_reason)
 
     expected_keys = (
         {"mono"}
@@ -377,11 +400,15 @@ def parse_offerta(el: ET.Element) -> ParsedOffer | None:
             per_kwh_extras_eur=extras,
             power_fee_eur_kw_year=power_fee,
             one_off_fee_eur=one_off,
-            discounts=_parse_discounts(el),
-            customer=CustomerType.DOMESTIC,
+            discounts=discounts,
+            customer=customer,
             residency=_residency(dettaglio),
             geo=_geo(el),
             losses_mode=policy.losses_mode(OfferSource.MLIBERO, price_type),
+            dispatching_eur_kwh=dispatching_result.eur_kwh,
+            dispatching_eur_year=dispatching_result.eur_year,
+            dispatching_breakdown=dispatching_result.breakdown,
+            dispatching_approximate=dispatching_result.approximate,
             consumption_min_kwh=consumo_min,
             consumption_max_kwh=consumo_max,
             valid_from=valid_from,
@@ -392,7 +419,7 @@ def parse_offerta(el: ET.Element) -> ParsedOffer | None:
     return offer
 
 
-def iter_mlibero_offers(path: str) -> Iterator[ParsedOffer]:
+def iter_mlibero_offers(path: str, params: Parameters) -> Iterator[ParsedOffer]:
     """Stream-parse the mercato libero XML, clearing elements as it goes to
     keep memory bounded on the ~20 MB file.
     """
@@ -401,12 +428,12 @@ def iter_mlibero_offers(path: str) -> Iterator[ParsedOffer]:
     for event, elem in context:
         if event != "end" or _local(elem.tag) != "offerta":
             continue
-        parsed = parse_offerta(elem)
+        parsed = parse_offerta(elem, params)
         elem.clear()
         root.clear()
         if parsed is not None:
             yield parsed
 
 
-def parse_mlibero_file(path: str) -> list[ParsedOffer]:
-    return list(iter_mlibero_offers(path))
+def parse_mlibero_file(path: str, params: Parameters) -> list[ParsedOffer]:
+    return list(iter_mlibero_offers(path, params))
