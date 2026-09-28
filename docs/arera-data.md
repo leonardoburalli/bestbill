@@ -74,9 +74,47 @@ F1 33 %, F2 31 %, F3 36 % (F23 = 67 %). ARERA reference customer ("cliente tipo"
   the **index only**, not the spread. PLACET variable offers apply
   `(1 + λ)` to **(PINGM + alpha) together**. See
   `bestbill.core.models.LossesMode` and `bestbill.arera.policy.losses_mode()`.
+- **IDX_PREZZO_ENERGIA 01 and 12** are both treated as the monthly PUN
+  index (`bestbill.arera.policy.SUPPORTED_IDX_CODES`); 01 is *inferred* to
+  behave like 12 (not distinguished in the sample data).
 - **Unconditional discounts** in the first 12 months reduce the estimate. Conditional discounts are only displayed.
-- **Dispatching components** (C_disp/C_dispD, capacity market, …) are supplier-side €/kWh or €/year charges and belong in the supplier component.
+- **Dispatching components** (C_disp/C_dispD, capacity market, …) are supplier-side €/kWh or €/year charges and belong in the supplier component; see the dispatching table below.
 - **Resident/non-resident**: needed for offer eligibility (and later for excise and system charges).
+
+## Dispatching (TIPO_DISPACCIAMENTO), verified against v4.0 §3.1.3/§3.3.3
+Priced from `PO_Parametri_Mercato_Libero_E_{date}.csv` (mercato libero) /
+`PO_Parametri_E_{date}.csv` (PLACET), parsed by `bestbill.arera.parameters`.
+Codes declared by one offer are additive by construction (no overlap).
+Unit is €/kWh × total kWh unless noted; see `bestbill.arera.policy` for the
+exact implementation and `docs/pricing-policy.md` for the approved rules.
+
+| code | formula | losses ×1.10 |
+|---|---|---|
+| 14 | `cdispd` (bundles 01 + 09; never combined with them) | no |
+| 01 | Cdisp = msd+modeol+uniess+terna+capprod+interr | yes |
+| 03/04/05/06/07/08 | msd / modeol / uniess / terna / capprod / interr | yes |
+| 09 | mean(cpty_mrkt_1, cpty_mrkt_2, cpty_mrkt_3), applied to all 12 months (flagged "approximate") | no |
+| 13 | `dispbt_d`, €/year fixed | no |
+| 99 | `VALORE_DISP` from the XML | no |
+| 11 / 12 | rst / rstg (non-domestic only; excluded if found on a domestic offer) | no |
+| 02 / 10 | Maggior Tutela → excludes the whole offer | – |
+| missing parameter or unknown code | excludes the offer with a reason | – |
+
+`csed` and `cpstgd` are ignored (Servizio a Tutele Graduali only).
+PLACET domestic offers (fixed and variable) always price
+`dispbt_d` €/year + `cdispd` €/kWh, no losses.
+
+**Sanity invariant**, logged in the manifest (`dispatching_identity`) and
+warned on if it doesn't hold within ±1e-6:
+`Cdisp + mean(cpty_mrkt_1..3) ≈ cdispd`.
+
+## Maggior Tutela exclusion (user decision, docs/pricing-policy.md)
+Maggior Tutela is closed to new customers, so any offer referencing it is
+excluded with reason "riferita a Maggior Tutela":
+- `IDX_PREZZO_ENERGIA` 05 (PE Maggior Tutela).
+- `TIPO_DISPACCIAMENTO` 02 (PD_MT) or 10 (capacity MT).
+- `Sconto/PrezziSconto/TIPOLOGIA` 04 (discount on Maggior Tutela).
+- MT-only parameters (e.g. `cpty_mrkt_mt`) are never used in pricing.
 
 ## Observed findings (Phase 2 importer, from the real files)
 - **MACROAREA 06 behaves exactly like MACROAREA 04** (energy price for fixed

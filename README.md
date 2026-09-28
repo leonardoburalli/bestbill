@@ -11,17 +11,22 @@ estimate — no sign-up, no personal data stored.
 
 ## Scope: what this compares
 
-Every estimate is the **commodity/supplier cost only**: energy price or
-spread over the PUN index (with network losses applied where flagged),
-supplier fixed fees, supplier-set €/kWh extras (e.g. dispatching
-pass-through), power fees, and unconditional discounts — the part of the
-bill that varies from supplier to supplier.
+Every estimate is the **commodity/supplier cost only, before VAT**
+("costo materia energia (IVA esclusa)"): energy price or spread over the
+PUN index (with network losses applied where flagged), supplier fixed
+fees, supplier-set €/kWh extras, dispatching (TIPO_DISPACCIAMENTO,
+priced from the ARERA parameters files), power fees, one-off fees, and
+unconditional discounts — the part of the bill that varies from supplier
+to supplier.
 
 Network charges, system charges, excise duties and VAT are **never**
 added: they're set by regulation, identical for every supplier, and
-therefore irrelevant to *which offer is cheapest*. Results are labelled
-"stima" of the supplier/commodity cost, never as the full electricity
-bill, and there is no full-bill calculation anywhere in this codebase.
+therefore irrelevant to *which offer is cheapest* (and don't depend on
+which retailer you pick). Results are labelled "stima" of the
+supplier/commodity cost, never as the full electricity bill, and there is
+no full-bill calculation anywhere in this codebase. Offers referencing
+**Maggior Tutela** (closed to new customers) are excluded and counted; see
+`docs/pricing-policy.md` and `docs/arera-data.md` for the full ruleset.
 
 ## What it does today
 
@@ -58,7 +63,9 @@ uv run bestbill compare --file Input/TariffeEE_Bolletta.xlsx --location Milano -
 
 # Build a catalogue from ARERA source files, then rank real offers too
 uv run bestbill catalog build --placet PO_Offerte_E_PLACET.csv \
-  --mlibero PO_Offerte_E_MLIBERO.xml --indices indices.csv --out build/catalog
+  --mlibero PO_Offerte_E_MLIBERO.xml --indices indices.csv \
+  --params-ml PO_Parametri_Mercato_Libero_E.csv \
+  --params-e PO_Parametri_E.csv --out build/catalog
 uv run bestbill compare --file src/bestbill/data/sample.xlsx --location Esempio \
   --catalog build/catalog/catalog.sqlite
 ```
