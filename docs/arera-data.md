@@ -72,3 +72,37 @@ F1 33 %, F2 31 %, F3 36 % (F23 = 67 %). ARERA reference customer ("cliente tipo"
 - **Unconditional discounts** in the first 12 months reduce the estimate. Conditional discounts are only displayed.
 - **Dispatching components** (C_disp/C_dispD, capacity market, …) are supplier-side €/kWh or €/year charges and belong in the supplier component.
 - **Resident/non-resident**: needed for offer eligibility (and later for excise and system charges).
+
+## Observed findings (Phase 2 importer, from the real files)
+- **MACROAREA 06 behaves exactly like MACROAREA 04** (energy price for fixed
+  offers / spread for variable offers, per `FASCIA_COMPONENTE` band), not a
+  separate per-kWh extra. Confirmed on real fixed offers where MACROAREA 06
+  is the *only* `ComponenteImpresa` (e.g. "Prezzo Componente Energia
+  Elettricità", 100% renewable offers) and the parsed offer has no other
+  energy-price component. `bestbill.arera.policy.classify_component` routes
+  06 the same way as 04.
+- **UNITA_MISURA 02 (€/kW/year)** is used both under MACROAREA 04 (e.g.
+  "Corrispettivo Quota Potenza da BTA1 a BTA3") independent of MACROAREA —
+  the importer classifies any component with `UNITA_MISURA == "02"` as the
+  power fee regardless of its MACROAREA.
+- **TIPO_DISPACCIAMENTO 13 (DispBT fisso €/anno)**: when a `VALORE_DISP` is
+  present it is a €/year fixed fee, not a €/kWh extra; other dispatching
+  codes with a `VALORE_DISP` (99 and, occasionally, others) are treated as
+  €/kWh extras. Regulated codes (01, 02, 03, 09-12, 14) normally carry no
+  `VALORE_DISP` in the sample file and are ignored, per the "same across
+  suppliers" rationale above.
+- **Mercato libero XML has no supplier company name element**, only
+  `PIVA_UTENTE` (VAT number). The catalogue currently shows `"P.IVA
+  <number>"` as the supplier name for mercato libero offers; a real
+  deployment should join against ARERA's operator list (or the
+  `parametriML` file, not fetched in this phase) for a display name. PLACET
+  rows do carry `denominazione` (supplier name) directly.
+- **PLACET domestic variable offers with no `p_vol_*` columns** are priced
+  purely as PINGM (PUN monthly index) + `alpha`; the importer defaults them
+  to a `mono` band structure with a zero base price and `alpha` as spread.
+- **MACROAREA 02 can also hold the actual energy price** (observed: a fixed
+  offer named its MACROAREA 02 component "Sales Price" / "Prezzo Energia",
+  banded by `FASCIA_COMPONENTE`, with no MACROAREA 04/06 component at all).
+  The importer keeps the brief's provisional default (02 → per_kwh_extras),
+  so offers like this are currently excluded as "prezzi energia
+  incompleti" — flagged in `policy.py` for the pricing-semantics review.
