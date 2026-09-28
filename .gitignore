@@ -1,0 +1,27 @@
+.DS_Store
+.env
+.env.*
+.venv/
+__pycache__/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+build/
+dist/
+data/downloads/
+.worktrees/
+.idea/
+.vscode/
+*.code-workspace
+
+# BestBill-specific
+Input/
+Output/
+*.xlsx
+!src/bestbill/data/*.xlsx
+!tests/fixtures/**
+frontend/node_modules/
+frontend/dist/
+catalog/*.sqlite

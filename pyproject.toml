@@ -1,0 +1,56 @@
+[build-system]
+requires = ["hatchling>=1.27,<2"]
+build-backend = "hatchling.build"
+
+[project]
+name = "bestbill"
+version = "0.1.0"
+description = "Which electricity offer is cheapest for your own consumption, in under a minute."
+readme = "README.md"
+license = "MIT"
+license-files = ["LICENSE"]
+requires-python = ">=3.13"
+dependencies = [
+  "openpyxl>=3.1,<4",
+  "pydantic>=2.10,<3",
+]
+
+[project.optional-dependencies]
+chart = [
+  "matplotlib>=3.9,<4",
+]
+dev = [
+  "mypy>=1.14,<2",
+  "pytest>=8.3,<9",
+  "pytest-cov>=6,<7",
+  "ruff>=0.9,<1",
+  "shellcheck-py>=0.10,<1",
+]
+
+[project.scripts]
+bestbill = "bestbill.cli:main"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/bestbill"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-q"
+
+[tool.coverage.run]
+source = ["bestbill"]
+
+[tool.ruff]
+line-length = 88
+target-version = "py313"
+
+[tool.ruff.lint]
+select = ["B", "C4", "E", "F", "I", "UP"]
+
+[tool.mypy]
+strict = true
+packages = ["bestbill"]
+
+[[tool.mypy.overrides]]
+module = ["openpyxl.*", "matplotlib.*"]
+ignore_missing_imports = true
