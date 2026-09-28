@@ -69,6 +69,11 @@ used, exactly as required by law.
   data files.
 - We don't use ARERA's or Acquirente Unico's names or logos to imply
   endorsement of BestBill.
+- We don't add network charges, system charges, excise duties or VAT to
+  any estimate: they're regulated and identical for every supplier, so
+  they never change which offer is cheapest. Every estimate is labelled as
+  the commodity/supplier cost, never as the full electricity bill, and
+  there is no full-bill calculation path in this codebase.
 
 ## Snapshot cadence
 

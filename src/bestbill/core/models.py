@@ -168,7 +168,15 @@ def _next_month(d: date) -> date:
 
 
 class Offer(BaseModel):
-    """A normalised electricity offer, from ARERA data or a custom source."""
+    """A normalised electricity offer, from ARERA data or a custom source.
+
+    Scope: every priced field on this model is **retailer-dependent**
+    (energy price/spread, supplier fees, supplier-set €/kWh extras, power
+    fees, discounts) -- the commodity/supplier part of the bill. Network
+    charges, system charges, excise duties and VAT are the same for every
+    supplier by law and are never modelled here (see PLAN.md §5 and
+    ``bestbill.core.calculator.compare``'s docstring).
+    """
 
     model_config = ConfigDict(frozen=True, extra="forbid")
 
@@ -392,6 +400,13 @@ Scenario = Annotated[Historical | Scaled | Flat, Field(discriminator="kind")]
 
 
 class OfferResult(BaseModel):
+    """Ranking result for one offer. ``cost_eur`` is the estimated annual
+    **commodity/supplier cost** (energy + supplier fees/extras/discounts)
+    only -- it never includes network charges, system charges, excise
+    duties or VAT, which are identical across suppliers and don't affect
+    the ranking (see ``compare()``'s docstring).
+    """
+
     model_config = ConfigDict(frozen=True, extra="forbid")
 
     offer_id: str
@@ -425,6 +440,11 @@ class Assumptions(BaseModel):
 
 
 class Comparison(BaseModel):
+    """The ranked result of :func:`bestbill.core.calculator.compare`.
+    Every cost in ``results`` is the commodity/supplier cost only (see
+    ``OfferResult``); it is not the full electricity bill.
+    """
+
     model_config = ConfigDict(frozen=True, extra="forbid")
 
     results: list[OfferResult]

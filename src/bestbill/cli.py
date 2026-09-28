@@ -138,11 +138,16 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
 
 def _print_ranking(comparison: Comparison, location: str) -> None:
     print(f"\n=== Confronto offerte per: {location} ===\n")
+    print(
+        "Costo stimato: sola quota energia e fornitura (il costo che varia da "
+        "fornitore a fornitore). Non include costi di rete, oneri di sistema, "
+        "accise e IVA, uguali per ogni fornitore e quindi esclusi dal confronto.\n"
+    )
     for result in comparison.results:
         cost = round_eur(result.cost_eur)
         delta = round_eur(result.delta_vs_best_eur)
         print(
-            f"  {result.rank}. {result.name:35s}  {cost:10.2f} EUR/anno"
+            f"  {result.rank}. {result.name:35s}  {cost:10.2f} EUR/anno (fornitore)"
             f"  (+{delta:.2f} vs migliore)"
         )
     if comparison.excluded:
@@ -162,6 +167,10 @@ def _write_csv(
     with output_path.open("w", newline="", encoding="utf-8") as f:
         f.write(f"# {comparison.assumptions.statement}\n")
         f.write(
+            "# Costo stimato: sola quota energia e fornitura (non include costi di "
+            "rete, oneri di sistema, accise e IVA, uguali per ogni fornitore)\n"
+        )
+        f.write(
             f"# Periodo: {comparison.assumptions.period_start} - "
             f"{comparison.assumptions.period_end}\n"
         )
@@ -178,9 +187,9 @@ def _write_csv(
                 "supplier",
                 "name",
                 "price_type",
-                "cost_eur",
+                "supplier_cost_eur",
                 "delta_vs_best_eur",
-                "eur_per_kwh_effective",
+                "supplier_eur_per_kwh_effective",
                 "break_even_pun_eur_kwh",
             ]
         )

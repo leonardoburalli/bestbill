@@ -296,6 +296,15 @@ def compare(
 ) -> Comparison:
     """Compare offers against a 12-month consumption profile.
 
+    Scope: this prices the **commodity/supplier cost only** -- energy
+    price/spread (with network losses applied where flagged), supplier
+    fixed fees, supplier-set €/kWh extras (e.g. dispatching pass-through),
+    power fees and unconditional discounts. It never adds network charges,
+    system charges, excise duties or VAT: those are set by regulation and
+    are identical for every supplier, so they don't change the ranking
+    (PLAN.md §5). Every ``cost_eur`` in the result is this supplier cost,
+    not the full electricity bill.
+
     ``residency``/``istat_comune`` filter offers restricted to residents or
     to a geographic zone (ARERA ZoneOfferta); ``istat_comune`` is the
     user's 6-digit ISTAT comune code -- geo-restricted offers are excluded

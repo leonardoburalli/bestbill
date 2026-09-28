@@ -9,6 +9,20 @@ estimate — no sign-up, no personal data stored.
 > `PLAN.md`). The web app (FastAPI, React frontend) is coming next; see
 > `PLAN.md` for the full roadmap.
 
+## Scope: what this compares
+
+Every estimate is the **commodity/supplier cost only**: energy price or
+spread over the PUN index (with network losses applied where flagged),
+supplier fixed fees, supplier-set €/kWh extras (e.g. dispatching
+pass-through), power fees, and unconditional discounts — the part of the
+bill that varies from supplier to supplier.
+
+Network charges, system charges, excise duties and VAT are **never**
+added: they're set by regulation, identical for every supplier, and
+therefore irrelevant to *which offer is cheapest*. Results are labelled
+"stima" of the supplier/commodity cost, never as the full electricity
+bill, and there is no full-bill calculation anywhere in this codebase.
+
 ## What it does today
 
 - A pure, typed calculation engine (`bestbill.core`): given a 12-month
