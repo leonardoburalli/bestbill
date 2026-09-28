@@ -8,16 +8,43 @@ data, not from an official spec, and must be verified against the spec before us
 - Acquirente Unico / SII, [*Regole per il calcolo della spesa annua stimata* v4.0 (16 Feb 2026)](https://www.ilportaleofferte.it/portaleOfferte/resources/cms/documents/7d0a872b48e8796c84366afedd2ce7ec.pdf) — calculation method and most code tables.
 - SII, *Funzionamento e Specifiche del Processo di Trasmissione Offerte* (rev. 15 Dec 2025), on the [SII public portal](https://siiportale.acquirenteunico.it/processi/trasversali/mercato-retail).
 - [Portal "Informazioni legali"](https://www.ilportaleofferte.it/portaleOfferte/it/informazioni-legali.page).
+- ARERA [Ricerca operatori](https://www.arera.it/area-operatori/ricerca-operatori) — electricity-retailer list (name, VAT, website), used to name mercato libero offers (see "Supplier names" below).
 
 ## Licence
-CC-BY 4.0. Reuse and redistribution of daily derived snapshots are allowed, with attribution:
+CC-BY 4.0 for the Portale Offerte data (offers, parameters, indices). Reuse and redistribution of daily derived snapshots are allowed, with attribution:
 
 > Dati elaborati a partire dagli Open Data pubblicati su "Portale Offerte"
 > (www.ilportaleofferte.it), gestito da Acquirente Unico S.p.A. su disposizioni di
 > ARERA. Licenza CC-BY 4.0.
 
+The ARERA "Ricerca operatori" export (arera.it site data, distinct from the
+Portale Offerte data above) is licensed **CC BY-SA 4.0** per the arera.it
+site terms ("Riuso dei dati pubblici (Open Data) e copyright", updated 27
+Mar 2025). Since the published catalogue combines both, the catalogue
+(`catalog.sqlite` + `manifest.json`) as a whole is licensed **CC BY-SA
+4.0** — see PROVENANCE.md for the full attribution text and `manifest.json`'s
+`licence`/`sources` fields.
+
 Supplier and offer names may be shown (nominative use in a comparison). ARERA/AU
 logos may not be used without written authorisation.
+
+## Supplier names (ARERA "Ricerca operatori" export)
+The mercato libero XML only publishes `PIVA_UTENTE` (a VAT number); the
+ARERA operators export resolves it to a display name. The
+"Ricerca operatori" page links to the current export as
+`/fileadmin/ricercaoperatori/export-mercato-vend<DD_MM_YYYY_HH_MM_SS>.zip`
+(the timestamp changes at every ARERA refresh — `bestbill.arera.operators
+.discover_export_url` finds it with a regex). The zip holds one `.xlsx`
+(`Sheet1`, header `RAGIONE SOCIALE | PARTITA IVA | ID_SOGGETTO | COMUNE
+SEDE LEGALE | INDIRIZZO | SITO WEB | CONTATTI CLIENTE | CONTATTI CLIENTE
+2`, 734 rows as of 2026-09-21). This importer reads **only** `RAGIONE
+SOCIALE`, `PARTITA IVA` and `SITO WEB` — addresses and contact details are
+never stored or published (data-minimisation decision, see
+PROVENANCE.md). `PARTITA IVA` is zero-padded to 11 digits (openpyxl can
+hand back a bare number for a numeric-looking VAT); names may have
+trailing spaces (e.g. `"+Energia "`), stripped at parse time. See
+`docs/pricing-policy.md` "Supplier name resolution" for the full name
+resolution order and the observed 318/319 real-catalogue match rate.
 
 ## Files and schedule
 Base: `https://www.ilportaleofferte.it/portaleOfferte/resources/opendata/csv/`

@@ -92,3 +92,51 @@ single index).
 
 ## Result breakdown per offer
 energy, fixed fees, other €/kWh, power fee, dispatching, one-off, discounts, total. Label: "costo materia energia (IVA esclusa)".
+
+## Break-even PUN edge cases (Phase 2, decided 2026-09-28)
+A variable offer's annual cost is linear in the flat average PUN `P`:
+`cost_var(P) = k*P + rest`, with `k = total_kwh * index_multiplier` always
+positive when there's consumption to price (the loss multiplier is 1.0 or
+`1 + LOSSES`, never zero/negative). Against the cheapest eligible fixed
+offer's constant cost `C`, `cost_var(P) < C` exactly for `P < break_even =
+(C - rest) / k`. Three cases, `BreakEvenStatus`:
+- `cheaper_below` (normal): `break_even > 0` — cheaper below that PUN, more
+  expensive above it. `break_even_pun_eur_kwh` is set.
+- `never_cheaper`: `break_even <= 0` — the variable offer costs at least as
+  much as the best fixed offer at every non-negative PUN, so there's no
+  informative number to show; `break_even_pun_eur_kwh` is `None`.
+  Observed on the real catalogue: ATENA PLACET VARIABILE (`break_even =
+  -0.0155`).
+- `always_cheaper`: defensive branch for `k <= 0` (unreachable in practice
+  given the `total_kwh > 0` gate and the always-positive loss multiplier;
+  kept so the calculator never divides by zero/a negative slope).
+
+## Supplier name resolution (Phase 2, decided 2026-09-28)
+The mercato libero XML only publishes `PIVA_UTENTE` (a VAT number); PLACET
+publishes `denominazione` (a name) directly. Resolution order for a
+supplier's display name, `SupplierNameSource`:
+1. **arera**: the ARERA "Ricerca operatori" export (RAGIONE SOCIALE),
+   matched by VAT — see `bestbill.arera.operators`.
+2. **placet**: a PLACET row's own `denominazione` for the same VAT (PLACET
+   offers always resolve here trivially, since it's their own dataset).
+3. **domain**: the retailer's own website (`URL_SITO_VENDITORE`), domain
+   only (scheme/`www.`/path stripped).
+4. **vat**: last resort, `"P.IVA <vat>"`.
+
+Only `RAGIONE SOCIALE`, `PARTITA IVA` and `SITO WEB` are read from the
+ARERA export; addresses and contact details are never stored (licence and
+data-minimisation decision, see PROVENANCE.md). On the real catalogue: 318
+of 319 mercato libero retailers resolve via **arera**; the remaining one
+(VAT `03882060712`) falls back to **domain** (`rubinoenergas.it`).
+
+## Custom offers vs. catalogue fairness (Phase 2, decided 2026-09-28)
+The legacy Excel ("custom") tariffs never carried a dispatching cost,
+which made them rank ~65 €/year unfairly cheaper than catalogue offers
+when compared side by side. With `--catalog`, `bestbill compare` ranks
+**catalogue offers only** by default; `--include-custom` adds the
+workbook's offers, each priced with the catalogue's **standard household
+dispatching** (`cdispd` €/kWh + `dispbt_d` €/year, from the PLACET
+parameters table — the same values `bestbill.arera.policy
+.placet_domestic_dispatching` uses for real PLACET offers), and flagged
+with `dispatching_is_standard_estimate=True` on the result for
+transparency.

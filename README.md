@@ -65,9 +65,14 @@ uv run bestbill compare --file Input/TariffeEE_Bolletta.xlsx --location Milano -
 uv run bestbill catalog build --placet PO_Offerte_E_PLACET.csv \
   --mlibero PO_Offerte_E_MLIBERO.xml --indices indices.csv \
   --params-ml PO_Parametri_Mercato_Libero_E.csv \
-  --params-e PO_Parametri_E.csv --out build/catalog
+  --params-e PO_Parametri_E.csv --operators operators.zip --out build/catalog
 uv run bestbill compare --file src/bestbill/data/sample.xlsx --location Esempio \
   --catalog build/catalog/catalog.sqlite
+
+# Add the workbook's own offers too, priced with the standard household
+# dispatching so they're comparable to catalogue offers
+uv run bestbill compare --file src/bestbill/data/sample.xlsx --location Esempio \
+  --catalog build/catalog/catalog.sqlite --include-custom
 ```
 
 For backwards compatibility, `bestbill --file ... --location ...` (no
@@ -78,6 +83,13 @@ offers; `--output-dir` controls where the CSV (and chart) are written
 (defaults to `Output/`). `compare` also accepts `--residency
 {resident,non_resident}`, `--istat-comune` (6-digit ISTAT comune code, for
 geo-restricted catalogue offers) and `--committed-power-kw` (default 3.0).
+With `--catalog`, only catalogue offers are ranked by default (the
+workbook's custom tariffs previously had no dispatching cost, making them
+unfairly cheaper); pass `--include-custom` to add them back in, priced
+with the catalogue's standard household dispatching. `catalog build`
+accepts an optional `--operators <zip|xlsx>` (the ARERA "Ricerca
+operatori" export) to name mercato libero offers by retailer instead of
+their VAT.
 
 ## Development
 
@@ -124,20 +136,27 @@ the cheapest fixed offer becomes cheaper instead.
 
 `bestbill.arera` imports the daily open data from ARERA's *Portale Offerte*
 (PLACET CSV + mercato libero XML + PUN indices, CC-BY 4.0 — see
-`PROVENANCE.md` and `docs/arera-data.md`) into normalised `Offer` objects.
-Every pricing rule that isn't unambiguous in the public spec — network
-losses, which components count as fees vs. extras, which discounts get
-priced — lives in **one file**, `bestbill.arera.policy`, so it can be
-corrected without touching the parsers. Offers with an unsupported
-structure or an implausible reference price are **excluded and counted**,
-never silently mispriced.
+`PROVENANCE.md` and `docs/arera-data.md`) into normalised `Offer` objects,
+and (optionally) the ARERA "Ricerca operatori" export (electricity-retailer
+name + VAT + website, CC BY-SA 4.0) to name mercato libero offers, which
+otherwise only carry a VAT number. Every pricing rule that isn't
+unambiguous in the public spec — network losses, which components count as
+fees vs. extras, which discounts get priced — lives in **one file**,
+`bestbill.arera.policy`, so it can be corrected without touching the
+parsers. Offers with an unsupported structure or an implausible reference
+price are **excluded and counted**, never silently mispriced.
 
 `bestbill.catalog.build` writes a validated, read-only `catalog.sqlite` +
 `manifest.json` snapshot (schema checks, minimum offer/PUN counts, a
 ±30% day-to-day count gate, and a pricing-sanity check against the ARERA
 reference customer). `.github/workflows/catalog.yml` runs this daily and
-publishes both files to the rolling `catalog-latest` GitHub Release; a
-failed validation keeps the previous snapshot serving.
+publishes both files (plus the operators export, cached for the next run's
+fallback) to the rolling `catalog-latest` GitHub Release; a failed
+validation keeps the previous snapshot serving. Because it combines CC BY
+4.0 (Portale Offerte) and CC BY-SA 4.0 (ARERA operators) data, the
+published catalogue as a whole is **CC BY-SA 4.0** — see `PROVENANCE.md`
+for the full licence/attribution text and the manifest's `licence`/
+`sources` fields.
 
 ## Data & privacy
 
