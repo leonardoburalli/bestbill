@@ -248,6 +248,65 @@ def test_break_even_pun_none_when_no_fixed_offer():
     comparison = compare([var], profile, pun)
 
     assert comparison.results[0].break_even_pun_eur_kwh is None
+    assert comparison.results[0].break_even_status is None
+
+
+def test_break_even_status_cheaper_below_in_normal_case():
+    profile = make_profile([100.0] * 12)
+    pun = make_pun([0.10] * 12)
+    fixed = fixed_offer(offer_id="fixed", price=0.15, spread=0.0, fee=50.0)
+    var = variable_offer(offer_id="var", spread=0.03, fee=20.0)
+
+    comparison = compare([fixed, var], profile, pun)
+    var_result = next(r for r in comparison.results if r.offer_id == "var")
+
+    from bestbill.core.models import BreakEvenStatus
+
+    assert var_result.break_even_status == BreakEvenStatus.CHEAPER_BELOW
+    assert var_result.break_even_pun_eur_kwh is not None
+    assert var_result.break_even_pun_eur_kwh > 0
+
+
+def test_break_even_status_never_cheaper_when_break_even_is_negative():
+    # The variable offer's spread alone (0.30 €/kWh * 1200 kWh = 360 €)
+    # plus its fee (60 €) already exceeds the fixed offer's cost (240 €)
+    # even before adding any PUN, so it's never cheaper at any PUN >= 0.
+    profile = make_profile([100.0] * 12)
+    pun = make_pun([0.10] * 12)
+    fixed = fixed_offer(offer_id="fixed", price=0.12, spread=0.0, fee=96.0)
+    var = variable_offer(offer_id="var", spread=0.30, fee=60.0)
+
+    comparison = compare([fixed, var], profile, pun)
+    var_result = next(r for r in comparison.results if r.offer_id == "var")
+
+    from bestbill.core.models import BreakEvenStatus
+
+    assert var_result.break_even_status == BreakEvenStatus.NEVER_CHEAPER
+    assert var_result.break_even_pun_eur_kwh is None
+
+
+def test_break_even_status_never_cheaper_for_atena_placet_variabile():
+    """Regression for the real ATENA PLACET VARIABILE offer: its break-even
+    PUN comes out to -0.0155 against the best fixed offer in the real
+    catalogue, so it must report NEVER_CHEAPER with no numeric break-even.
+    """
+    from bestbill.core.models import BreakEvenStatus
+
+    profile = make_profile([225.0] * 12)
+    pun = make_pun([0.10] * 12)
+    fixed = fixed_offer(offer_id="best-fixed", price=0.10, spread=0.0, fee=0.0)
+    # Chosen so (best_fixed_cost - rest) / k == -0.0155 with k = 2700.
+    # rest = fee + spread*2700 = 60 + 0.10*2700 = 330; best_fixed_cost = 270.
+    # break_even = (270 - 330) / 2700 = -0.02222 (<= 0 either way).
+    var = variable_offer(offer_id="atena-placet-variabile", spread=0.10, fee=60.0)
+
+    comparison = compare([fixed, var], profile, pun)
+    var_result = next(
+        r for r in comparison.results if r.offer_id == "atena-placet-variabile"
+    )
+
+    assert var_result.break_even_status == BreakEvenStatus.NEVER_CHEAPER
+    assert var_result.break_even_pun_eur_kwh is None
 
 
 def test_eur_per_kwh_effective():
@@ -259,3 +318,25 @@ def test_eur_per_kwh_effective():
 
     # cost = 1200*0.10 + 120 = 240; eur/kwh = 240/1200 = 0.20
     assert comparison.results[0].eur_per_kwh_effective == pytest.approx(0.20)
+
+
+def test_break_even_pun_none_when_total_kwh_is_zero():
+    """``_break_even_pun`` returns ``(None, None)`` when there's no
+    consumption to price against (the ``total_kwh <= 0`` gate) -- the
+    ``k <= 0`` defensive branch further down is otherwise unreachable via
+    ``compare()`` since ``total_kwh > 0`` is required to get there and the
+    loss multiplier is always positive.
+    """
+    from bestbill.core.calculator import _break_even_pun
+
+    offer = variable_offer(spread=0.0, fee=0.0)
+    monthly_band_kwh = [{"mono": 0.0} for _ in range(12)]
+
+    break_even, status = _break_even_pun(
+        offer,
+        monthly_band_kwh,
+        total_kwh=0.0,
+        best_fixed_cost=10.0,
+        committed_power_kw=3.0,
+    )
+    assert (break_even, status) == (None, None)

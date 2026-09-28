@@ -9,6 +9,7 @@ from bestbill.arera import policy
 from bestbill.core.bands import aggregate_to_structure, split_month_to_bands
 from bestbill.core.models import (
     Assumptions,
+    BreakEvenStatus,
     Comparison,
     ConsumptionProfile,
     CostBreakdown,
@@ -315,13 +316,32 @@ def _break_even_pun(
     total_kwh: float,
     best_fixed_cost: float | None,
     committed_power_kw: float,
-) -> float | None:
-    """Flat average PUN at which this variable offer costs the same as the
+) -> tuple[float | None, BreakEvenStatus | None]:
+    """Break-even PUN at which this variable offer costs the same as the
     cheapest eligible fixed offer, including dispatching, one-off fees and
     priced discounts (docs/pricing-policy.md §7).
+
+    The variable offer's annual cost is linear in the flat average PUN
+    ``P``: ``cost_var(P) = k*P + rest`` with ``k = total_kwh *
+    index_multiplier``. Since ``k > 0`` whenever there's consumption to
+    price (``total_kwh > 0`` is required by the caller, and
+    ``index_multiplier`` is always positive -- 1.0 or ``1 + LOSSES``),
+    ``cost_var(P) < best_fixed_cost`` exactly for ``P < break_even``.
+    Returns ``(break_even_pun, status)``:
+
+    - ``(P*, CHEAPER_BELOW)``: the normal case, ``P* > 0`` -- cheaper
+      below that PUN, more expensive above it.
+    - ``(None, NEVER_CHEAPER)``: ``P* <= 0`` -- the variable offer costs
+      at least as much as the best fixed offer at every PUN >= 0, so
+      there's no informative break-even point to show.
+    - ``(None, ALWAYS_CHEAPER)``: defensive branch for ``k <= 0`` (not
+      reachable given the caller's ``total_kwh > 0`` gate and the always-
+      positive loss multiplier, kept for completeness/safety).
+    - ``(None, None)``: no eligible fixed offer to break even against, or
+      no consumption at all.
     """
     if best_fixed_cost is None or total_kwh <= 0:
-        return None
+        return None, None
     index_multiplier, spread_multiplier = _loss_multipliers(offer)
     rest = (
         offer.fixed_fee_eur_year
@@ -352,7 +372,19 @@ def _break_even_pun(
         for d in _priced_discounts(offer)
     )
     rest -= discount_total
-    return (best_fixed_cost - rest) / (total_kwh * index_multiplier)
+
+    k = total_kwh * index_multiplier
+    if k <= 0:
+        # Defensive: can't happen given the total_kwh > 0 gate above and an
+        # always-positive index_multiplier, but never divide by <= 0.
+        if best_fixed_cost - rest > 0:
+            return None, BreakEvenStatus.ALWAYS_CHEAPER
+        return None, BreakEvenStatus.NEVER_CHEAPER
+
+    break_even = (best_fixed_cost - rest) / k
+    if break_even <= 0:
+        return None, BreakEvenStatus.NEVER_CHEAPER
+    return break_even, BreakEvenStatus.CHEAPER_BELOW
 
 
 def estimate_annual_cost(
@@ -481,8 +513,9 @@ def compare(
     for rank, offer in enumerate(ordered, start=1):
         cost = costs[offer.id]
         break_even = None
+        break_even_status = None
         if offer.price_type is PriceType.VARIABLE:
-            break_even = _break_even_pun(
+            break_even, break_even_status = _break_even_pun(
                 offer,
                 offer_band_kwh[offer.id],
                 total_kwh,
@@ -500,9 +533,11 @@ def compare(
                 eur_per_kwh_effective=cost / total_kwh if total_kwh > 0 else 0.0,
                 rank=rank,
                 break_even_pun_eur_kwh=break_even,
+                break_even_status=break_even_status,
                 one_off_fee_eur=offer.one_off_fee_eur,
                 conditional_discounts=_conditional_discounts(offer),
                 breakdown=breakdowns[offer.id],
+                dispatching_is_standard_estimate=offer.dispatching_is_standard_estimate,
             )
         )
 
