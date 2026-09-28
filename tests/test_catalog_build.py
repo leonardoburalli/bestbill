@@ -1,0 +1,93 @@
+import json
+import pathlib
+import shutil
+import sqlite3
+
+import pytest
+
+from bestbill.catalog.build import build_catalog
+from bestbill.catalog.validate import validate_catalog_dir
+
+FIXTURES = pathlib.Path(__file__).parent / "fixtures" / "arera"
+
+
+@pytest.fixture()
+def built_catalog(tmp_path):
+    return build_catalog(
+        placet_path=FIXTURES / "placet.csv",
+        mlibero_path=FIXTURES / "mlibero.xml",
+        indices_path=FIXTURES / "indices.csv",
+        out_dir=tmp_path / "catalog",
+    )
+
+
+def test_build_catalog_creates_sqlite_and_manifest(built_catalog):
+    assert built_catalog.sqlite_path.exists()
+    assert built_catalog.manifest_path.exists()
+    manifest = json.loads(built_catalog.manifest_path.read_text(encoding="utf-8"))
+    assert manifest["schema_version"] == 1
+    assert manifest["attribution"]
+    assert manifest["counts"]["included"] > 0
+
+
+def test_build_catalog_has_both_sources(built_catalog):
+    counts = built_catalog.manifest["counts"]["by_source"]
+    assert counts["placet"]["included"] > 0
+    assert counts["mlibero"]["included"] > 0
+
+
+def test_build_catalog_pun_series_present(built_catalog):
+    assert built_catalog.manifest["pun_months"] >= 12
+
+
+def test_validate_passes_on_fresh_build(built_catalog):
+    result = validate_catalog_dir(built_catalog.sqlite_path.parent)
+    assert result.ok, result.errors
+
+
+def test_validate_fails_on_missing_table(tmp_path, built_catalog):
+    catalog_dir = tmp_path / "broken"
+    shutil.copytree(built_catalog.sqlite_path.parent, catalog_dir)
+    conn = sqlite3.connect(catalog_dir / "catalog.sqlite")
+    conn.execute("DROP TABLE pun")
+    conn.commit()
+    conn.close()
+    result = validate_catalog_dir(catalog_dir)
+    assert not result.ok
+    assert any("missing table" in e for e in result.errors)
+
+
+def test_validate_count_gate_within_tolerance(built_catalog, tmp_path):
+    previous = dict(built_catalog.manifest)
+    previous["counts"] = dict(previous["counts"])
+    previous["counts"]["included"] = built_catalog.manifest["counts"]["included"]
+    prev_path = tmp_path / "previous_manifest.json"
+    prev_path.write_text(json.dumps(previous), encoding="utf-8")
+
+    result = validate_catalog_dir(
+        built_catalog.sqlite_path.parent, previous_manifest_path=prev_path
+    )
+    assert result.ok, result.errors
+
+
+def test_validate_count_gate_fails_outside_tolerance(built_catalog, tmp_path):
+    previous = dict(built_catalog.manifest)
+    previous["counts"] = dict(previous["counts"])
+    previous["counts"]["included"] = built_catalog.manifest["counts"]["included"] * 10
+    prev_path = tmp_path / "previous_manifest.json"
+    prev_path.write_text(json.dumps(previous), encoding="utf-8")
+
+    result = validate_catalog_dir(
+        built_catalog.sqlite_path.parent, previous_manifest_path=prev_path
+    )
+    assert not result.ok
+    assert any("±" in e for e in result.errors)
+
+
+def test_build_catalog_excludes_implausible_offers_without_failing(built_catalog):
+    manifest = built_catalog.manifest
+    # The gate should never crash the build; it only redistributes offers
+    # between "included" and "excluded".
+    assert manifest["counts"]["total"] == (
+        manifest["counts"]["included"] + manifest["counts"]["excluded"]
+    )

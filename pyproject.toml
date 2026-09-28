@@ -35,7 +35,10 @@ packages = ["src/bestbill"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
-addopts = "-q"
+addopts = "-q -m \"not slow\""
+markers = [
+  "slow: local-only tests that need the full ARERA source files (see BESTBILL_ARERA_FIXTURES_DIR)",
+]
 
 [tool.coverage.run]
 source = ["bestbill"]
