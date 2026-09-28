@@ -95,10 +95,12 @@ def test_placet_missing_fee_excluded():
     assert "canone annuo" in result[0].reason
 
 
-def test_placet_non_domestic_row_silently_skipped():
+def test_placet_non_domestic_row_excluded_and_counted():
     row = "Alfa,,,,,Nome,ID4,,,,,,non domestico,prezzo fisso,300,,,,,,,0.1,,,,\n"
     result = _rows(row)
-    assert result == []
+    assert len(result) == 1
+    assert isinstance(result[0], Excluded)
+    assert "non domestica" in result[0].reason
 
 
 def test_placet_invalid_offer_validation_error_excluded():

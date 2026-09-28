@@ -1,9 +1,9 @@
 """PLACET EE CSV -> Offer.
 
 See docs/arera-data.md "PLACET CSV" for the column reference. This
-importer only produces domestic offers (``tipo_cliente == "domestico"``);
-non-domestic rows are skipped, not counted as excluded (they're simply out
-of scope for the MVP catalogue, not an unsupported structure).
+importer only prices domestic offers (``tipo_cliente == "domestico"``);
+non-domestic rows are excluded and counted, like any other unsupported
+structure, so the catalogue never contains a business offer.
 """
 
 from __future__ import annotations
@@ -85,7 +85,11 @@ def parse_placet_rows(text: str, params: Parameters) -> Iterator[ParsedRow]:
     reader = csv.DictReader(io.StringIO(text))
     for row in reader:
         offer_id = row.get("cod_offerta", "").strip() or row.get("nome_offerta", "?")
-        if row.get("tipo_cliente", "").strip() != "domestico":
+        tipo_cliente = row.get("tipo_cliente", "").strip()
+        if tipo_cliente != "domestico":
+            yield Excluded(
+                offer_id, f"offerta non domestica (tipo_cliente={tipo_cliente!r})"
+            )
             continue
 
         tipo_offerta = row.get("tipo_offerta", "").strip()

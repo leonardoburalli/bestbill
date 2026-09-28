@@ -4,10 +4,10 @@ Namespace: ``http://www.acquirenteunico.it/schemas/SII_AU/OffertaRetail/01``.
 See docs/arera-data.md for the code tables and
 :mod:`bestbill.arera.policy` for the pricing rules used here.
 
-Domestic only (``TIPO_CLIENTE`` != domestic is silently skipped, not
-counted as excluded -- out of MVP scope, not an unsupported structure).
-Dual-fuel offers (``OFFERTA_SINGOLA`` == "NO") are excluded and counted:
-the engine only prices single-commodity (electricity) offers.
+Domestic only (``TIPO_CLIENTE`` != domestic is excluded and counted, like
+any other unsupported structure). Dual-fuel offers (``OFFERTA_SINGOLA`` ==
+"NO") are excluded and counted: the engine only prices single-commodity
+(electricity) offers.
 """
 
 from __future__ import annotations
@@ -186,7 +186,7 @@ def _power_fee(el: ET.Element) -> float:
 
 
 def _dispatching(
-    el: ET.Element, customer: CustomerType, params: Parameters
+    el: ET.Element, params: Parameters
 ) -> tuple[policy.DispatchingResult, None] | tuple[None, str]:
     """Combine every Dispacciamento row on the offer (additive by
     construction). Returns an exclusion reason if any row is Maggior
@@ -198,9 +198,7 @@ def _dispatching(
         valore = _to_float(_text(disp, "VALORE_DISP"))
         if tipo is None:
             continue
-        result, reason = policy.dispatching_component_v2(
-            tipo, valore, params, customer=customer
-        )
+        result, reason = policy.dispatching_component_v2(tipo, valore, params)
         if result is None:
             assert reason is not None
             return None, reason
@@ -260,10 +258,10 @@ def _band_structure_from_tipologia(code: str) -> BandStructure:
     }[TipologiaFasce(code)]
 
 
-def parse_offerta(el: ET.Element, params: Parameters) -> ParsedOffer | None:
-    """Parse one ``<offerta>`` element. Returns ``None`` if the offer is
-    out of MVP scope (non-domestic), an :class:`Excluded` if it has an
-    unsupported structure, or an :class:`Offer`.
+def parse_offerta(el: ET.Element, params: Parameters) -> ParsedOffer:
+    """Parse one ``<offerta>`` element into an :class:`Excluded` (unsupported
+    structure, non-domestic, or any other unpriceable case -- always
+    counted, never silently dropped) or an :class:`Offer`.
     """
     ident = el.find(f"{_NS}IdentificativiOfferta")
     offer_id = _text(ident, "COD_OFFERTA") if ident is not None else None
@@ -276,8 +274,12 @@ def parse_offerta(el: ET.Element, params: Parameters) -> ParsedOffer | None:
 
     tipo_cliente_code = _text(dettaglio, "TIPO_CLIENTE")
     if tipo_cliente_code != "01":
-        return None  # non-domestic: out of MVP scope, not "excluded"
-    customer = CustomerType.DOMESTIC
+        # BestBill only compares household offers (docs/pricing-policy.md);
+        # non-domestic offers are excluded and counted, never silently
+        # dropped, so the catalogue never contains one.
+        return Excluded(
+            offer_id, f"offerta non domestica (TIPO_CLIENTE={tipo_cliente_code!r})"
+        )
 
     offerta_singola = _text(dettaglio, "OFFERTA_SINGOLA")
     if offerta_singola == "NO":
@@ -321,7 +323,7 @@ def parse_offerta(el: ET.Element, params: Parameters) -> ParsedOffer | None:
     if reason is not None:
         return Excluded(offer_id, reason)
 
-    dispatching_result, disp_reason = _dispatching(el, customer, params)
+    dispatching_result, disp_reason = _dispatching(el, params)
     if dispatching_result is None:
         assert disp_reason is not None
         return Excluded(offer_id, disp_reason)
@@ -401,7 +403,7 @@ def parse_offerta(el: ET.Element, params: Parameters) -> ParsedOffer | None:
             power_fee_eur_kw_year=power_fee,
             one_off_fee_eur=one_off,
             discounts=discounts,
-            customer=customer,
+            customer=CustomerType.DOMESTIC,
             residency=_residency(dettaglio),
             geo=_geo(el),
             losses_mode=policy.losses_mode(OfferSource.MLIBERO, price_type),
@@ -431,8 +433,7 @@ def iter_mlibero_offers(path: str, params: Parameters) -> Iterator[ParsedOffer]:
         parsed = parse_offerta(elem, params)
         elem.clear()
         root.clear()
-        if parsed is not None:
-            yield parsed
+        yield parsed
 
 
 def parse_mlibero_file(path: str, params: Parameters) -> list[ParsedOffer]:

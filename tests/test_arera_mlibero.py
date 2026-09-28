@@ -19,7 +19,7 @@ def test_mlibero_fixture_parses_expected_counts():
     offers = [r for r in rows if not isinstance(r, Excluded)]
     excluded = [r for r in rows if isinstance(r, Excluded)]
     assert len(offers) == 10
-    assert len(excluded) == 2
+    assert len(excluded) == 3
     assert all(o.customer.value == "domestic" for o in offers)
 
 
@@ -36,10 +36,16 @@ def test_mlibero_unsupported_fasce_excluded():
     assert any("TIPOLOGIA_FASCE" in r for r in reasons)
 
 
-def test_mlibero_non_domestic_silently_skipped():
-    # 13 <offerta> elements in the fixture; 9 offers + 3 excluded + 1 skipped
+def test_mlibero_non_domestic_excluded_and_counted():
+    # 13 <offerta> elements in the fixture; every one is parsed into either
+    # an Offer or an Excluded -- the non-domestic row (TIPO_CLIENTE=02) is
+    # never silently dropped, so it never reaches the catalogue.
     rows = _parsed()
-    assert len(rows) == 12
+    assert len(rows) == 13
+    excluded = [r for r in rows if isinstance(r, Excluded)]
+    assert any("non domestica" in r.reason for r in excluded)
+    offers = [r for r in rows if not isinstance(r, Excluded)]
+    assert all(o.customer.value == "domestic" for o in offers)
 
 
 def test_mlibero_band_structures_present():

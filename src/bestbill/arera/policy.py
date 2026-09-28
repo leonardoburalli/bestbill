@@ -41,7 +41,6 @@ from bestbill.arera.codes import (
 )
 from bestbill.arera.parameters import Parameters
 from bestbill.core.models import (
-    CustomerType,
     Discount,
     DiscountUnit,
     DiscountValidity,
@@ -236,13 +235,17 @@ def dispatching_component_v2(
     tipo_dispacciamento: str,
     valore_disp: float | None,
     params: Parameters,
-    *,
-    customer: CustomerType,
 ) -> tuple[DispatchingResult, None] | tuple[None, str]:
     """Classify+price one Dispacciamento row per docs/pricing-policy.md's
     dispatching table. Returns ``(result, None)`` or ``(None, reason)`` if
     the offer must be excluded (Maggior Tutela, a code reserved for
     non-domestic offers, a missing parameter, or an unknown code).
+
+    This importer only ever prices domestic offers (TIPO_CLIENTE == "01"
+    is excluded before dispatching is parsed -- see
+    ``bestbill.arera.mlibero``/``bestbill.arera.placet``), so codes 11/12
+    (rst/rstg, non-domestic only) always exclude the offer here; there is
+    no non-domestic pricing branch to keep in sync.
     """
     code = tipo_dispacciamento
     factor = 1.0 + LOSSES
@@ -251,15 +254,9 @@ def dispatching_component_v2(
         return None, MAGGIOR_TUTELA_REASON
 
     if code in ("11", "12"):
-        if customer is CustomerType.DOMESTIC:
-            return None, (
-                f"TIPO_DISPACCIAMENTO {code!r} riservato a offerte non domestiche"
-            )
-        name = "rst" if code == "11" else "rstg"
-        value = params.get(name)
-        if value is None:
-            return None, f"parametro {name!r} mancante"
-        return DispatchingResult(eur_kwh=value, breakdown={name: value}), None
+        return None, (
+            f"TIPO_DISPACCIAMENTO {code!r} riservato a offerte non domestiche"
+        )
 
     if code == "01":
         breakdown: dict[str, float] = {}
