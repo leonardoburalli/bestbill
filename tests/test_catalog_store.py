@@ -14,6 +14,8 @@ def store(tmp_path):
         placet_path=FIXTURES / "placet.csv",
         mlibero_path=FIXTURES / "mlibero.xml",
         indices_path=FIXTURES / "indices.csv",
+        params_ml_path=FIXTURES / "params_ml.csv",
+        params_e_path=FIXTURES / "params_e.csv",
         out_dir=tmp_path / "catalog",
     )
     with CatalogStore(result.sqlite_path) as s:
@@ -22,7 +24,7 @@ def store(tmp_path):
 
 def test_meta_has_schema_version(store):
     meta = store.meta()
-    assert meta["schema_version"] == "1"
+    assert meta["schema_version"] == "2"
     assert "attribution" in meta
 
 
@@ -66,6 +68,8 @@ def test_store_is_read_only(tmp_path):
         placet_path=FIXTURES / "placet.csv",
         mlibero_path=FIXTURES / "mlibero.xml",
         indices_path=FIXTURES / "indices.csv",
+        params_ml_path=FIXTURES / "params_ml.csv",
+        params_e_path=FIXTURES / "params_e.csv",
         out_dir=tmp_path / "catalog",
     )
     with CatalogStore(result.sqlite_path) as s:

@@ -16,7 +16,13 @@ import sys
 from collections.abc import Sequence
 from datetime import date
 
-from bestbill.arera.fetch import fetch_indices, fetch_mlibero, fetch_placet
+from bestbill.arera.fetch import (
+    fetch_indices,
+    fetch_mlibero,
+    fetch_parametri_e,
+    fetch_parametri_ml,
+    fetch_placet,
+)
 from bestbill.catalog.build import build_catalog
 from bestbill.catalog.store import CatalogStore
 from bestbill.catalog.validate import validate_catalog_dir
@@ -107,6 +113,17 @@ def _build_parser() -> argparse.ArgumentParser:
     )
     build_parser.add_argument(
         "--indices", required=True, help="Historical indices CSV path"
+    )
+    build_parser.add_argument(
+        "--params-ml",
+        required=True,
+        help="Mercato libero dispatching parameters CSV path "
+        "(PO_Parametri_Mercato_Libero_E_*.csv)",
+    )
+    build_parser.add_argument(
+        "--params-e",
+        required=True,
+        help="PLACET dispatching parameters CSV path (PO_Parametri_E_*.csv)",
     )
     build_parser.add_argument("--out", required=True, help="Output directory")
     build_parser.add_argument(
@@ -323,6 +340,8 @@ def _run_catalog_build(args: argparse.Namespace) -> int:
         placet_path=args.placet,
         mlibero_path=args.mlibero,
         indices_path=args.indices,
+        params_ml_path=args.params_ml,
+        params_e_path=args.params_e,
         out_dir=args.out,
         snapshot_date=snapshot_date,
     )
@@ -348,6 +367,8 @@ def _run_catalog_fetch(args: argparse.Namespace) -> int:
     out_dir = pathlib.Path(args.out)
     placet_result = fetch_placet(target, out_dir / "PO_Offerte_E_PLACET.csv")
     mlibero_result = fetch_mlibero(target, out_dir / "PO_Offerte_E_MLIBERO.xml")
+    fetch_parametri_ml(target, out_dir / "PO_Parametri_Mercato_Libero_E.csv")
+    fetch_parametri_e(target, out_dir / "PO_Parametri_E.csv")
     fetch_indices(out_dir / "indices.csv")
     log.info(
         "Fetched PLACET (effective %s) and mercato libero (effective %s) into %s",

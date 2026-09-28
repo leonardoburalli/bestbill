@@ -16,7 +16,7 @@ from typing import Any
 
 from bestbill.arera import policy
 
-_REQUIRED_TABLES = {"meta", "offers", "offer_geo", "pun", "excluded"}
+_REQUIRED_TABLES = {"meta", "offers", "offer_geo", "pun", "excluded", "parameters"}
 
 
 @dataclass

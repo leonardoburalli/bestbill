@@ -1,4 +1,4 @@
-"""Build ``catalog.sqlite`` + ``manifest.json`` from the three ARERA inputs."""
+"""Build ``catalog.sqlite`` + ``manifest.json`` from the ARERA source files."""
 
 from __future__ import annotations
 
@@ -14,6 +14,7 @@ from bestbill.arera import policy
 from bestbill.arera.indices import parse_indices_file
 from bestbill.arera.mlibero import Excluded as MliberoExcluded
 from bestbill.arera.mlibero import iter_mlibero_offers
+from bestbill.arera.parameters import Parameters, parse_parameters_file
 from bestbill.arera.placet import Excluded as PlacetExcluded
 from bestbill.arera.placet import parse_placet_file
 from bestbill.core.bands import DEFAULT_HOUSEHOLD_SPLIT
@@ -27,7 +28,7 @@ from bestbill.core.models import (
     PunSeries,
 )
 
-SCHEMA_VERSION = 1
+SCHEMA_VERSION = 2
 
 ATTRIBUTION = (
     'Dati elaborati a partire dagli Open Data pubblicati su "Portale Offerte" '
@@ -67,6 +68,14 @@ CREATE TABLE excluded (
     offer_id TEXT NOT NULL,
     source TEXT NOT NULL,
     reason TEXT NOT NULL
+);
+
+CREATE TABLE parameters (
+    source TEXT NOT NULL,
+    nome_parametro TEXT NOT NULL,
+    valore REAL NOT NULL,
+    descrizione TEXT NOT NULL,
+    PRIMARY KEY (source, nome_parametro)
 );
 """
 
@@ -116,10 +125,20 @@ def _is_plausible(offer: Offer, profile: ConsumptionProfile, pun: PunSeries) -> 
     return policy.PLAUSIBLE_MIN_EUR <= cost <= policy.PLAUSIBLE_MAX_EUR
 
 
+def _dispatching_identity(params_ml: Parameters) -> dict[str, Any]:
+    diff = policy.dispatching_identity_diff(params_ml)
+    if diff is None:
+        return {"available": False}
+    ok = abs(diff) <= policy.DISPATCHING_IDENTITY_TOLERANCE
+    return {"available": True, "diff": diff, "ok": ok}
+
+
 def build_catalog(
     placet_path: str | Path,
     mlibero_path: str | Path,
     indices_path: str | Path,
+    params_ml_path: str | Path,
+    params_e_path: str | Path,
     out_dir: str | Path,
     snapshot_date: date | None = None,
 ) -> BuildResult:
@@ -130,6 +149,8 @@ def build_catalog(
     manifest_path = out_dir / "manifest.json"
 
     pun = parse_indices_file(str(indices_path))
+    params_ml = parse_parameters_file(str(params_ml_path))
+    params_e = parse_parameters_file(str(params_e_path))
 
     offers: list[Offer] = []
     excluded: list[tuple[str, str, str]] = []
@@ -142,7 +163,7 @@ def build_catalog(
         seen_ids.add(offer.id)
         offers.append(offer)
 
-    for placet_row in parse_placet_file(str(placet_path)):
+    for placet_row in parse_placet_file(str(placet_path), params_e):
         if isinstance(placet_row, PlacetExcluded):
             excluded.append(
                 (placet_row.row_id, OfferSource.PLACET.value, placet_row.reason)
@@ -150,7 +171,7 @@ def build_catalog(
         else:
             _add(placet_row)
 
-    for mlibero_row in iter_mlibero_offers(str(mlibero_path)):
+    for mlibero_row in iter_mlibero_offers(str(mlibero_path), params_ml):
         if isinstance(mlibero_row, MliberoExcluded):
             excluded.append(
                 (mlibero_row.row_id, OfferSource.MLIBERO.value, mlibero_row.reason)
@@ -210,6 +231,13 @@ def build_catalog(
                 "INSERT INTO excluded (offer_id, source, reason) VALUES (?, ?, ?)",
                 (offer_id, source, reason),
             )
+        for source, params in (("mlibero", params_ml), ("placet", params_e)):
+            for name, value in params.values.items():
+                conn.execute(
+                    "INSERT INTO parameters "
+                    "(source, nome_parametro, valore, descrizione) VALUES (?, ?, ?, ?)",
+                    (source, name, value, params.descriptions.get(name, "")),
+                )
 
         counts_by_reason: dict[str, int] = {}
         for _, _, reason in excluded:
@@ -234,6 +262,14 @@ def build_catalog(
         conn.close()
 
     sha256 = hashlib.sha256(sqlite_path.read_bytes()).hexdigest()
+    dispatching_identity = _dispatching_identity(params_ml)
+    warnings: list[str] = []
+    if dispatching_identity.get("available") and not dispatching_identity.get("ok"):
+        warnings.append(
+            "dispatching identity check failed: |Cdisp + mean(cpty_mrkt_1..3) - "
+            f"cdispd| = {abs(dispatching_identity['diff']):.6f} exceeds "
+            f"{policy.DISPATCHING_IDENTITY_TOLERANCE:g}"
+        )
     manifest = {
         "schema_version": SCHEMA_VERSION,
         "snapshot_date": snapshot_date.isoformat(),
@@ -241,6 +277,8 @@ def build_catalog(
             "placet": {"path": str(placet_path)},
             "mlibero": {"path": str(mlibero_path)},
             "indices": {"path": str(indices_path)},
+            "parametri_mercato_libero": {"path": str(params_ml_path)},
+            "parametri_placet": {"path": str(params_e_path)},
         },
         "sqlite_sha256": sha256,
         "counts": {
@@ -251,6 +289,8 @@ def build_catalog(
             "by_source": counts_by_source,
         },
         "pun_months": len(pun.values),
+        "dispatching_identity": dispatching_identity,
+        "warnings": warnings,
         "attribution": ATTRIBUTION,
     }
     manifest_path.write_text(

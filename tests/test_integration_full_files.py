@@ -38,8 +38,12 @@ def test_build_catalog_from_full_real_files(tmp_path):
         placet_path=directory / "e_placet.csv",
         mlibero_path=directory / "e_ml.xml",
         indices_path=directory / "idx.csv",
+        params_ml_path=directory / "par_ml.csv",
+        params_e_path=directory / "par_e.csv",
         out_dir=tmp_path / "catalog",
     )
     counts = result.manifest["counts"]
     print(f"\nFull-file build counts: {counts}")
+    print(f"Dispatching identity: {result.manifest['dispatching_identity']}")
+    print(f"Warnings: {result.manifest['warnings']}")
     assert counts["included"] > 0

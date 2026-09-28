@@ -16,6 +16,8 @@ step "Smoke: build a catalogue from the ARERA fixtures" \
     --placet tests/fixtures/arera/placet.csv \
     --mlibero tests/fixtures/arera/mlibero.xml \
     --indices tests/fixtures/arera/indices.csv \
+    --params-ml tests/fixtures/arera/params_ml.csv \
+    --params-e tests/fixtures/arera/params_e.csv \
     --out "${OUT_DIR}/catalog"
 
 step "Smoke: rank real (fixture) offers for the sample household" \

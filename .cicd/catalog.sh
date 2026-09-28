@@ -16,6 +16,8 @@ BUILD_ARGS=(
   --placet "${RAW_DIR}/PO_Offerte_E_PLACET.csv"
   --mlibero "${RAW_DIR}/PO_Offerte_E_MLIBERO.xml"
   --indices "${RAW_DIR}/indices.csv"
+  --params-ml "${RAW_DIR}/PO_Parametri_Mercato_Libero_E.csv"
+  --params-e "${RAW_DIR}/PO_Parametri_E.csv"
   --out "${OUT_DIR}"
 )
 if [[ -n "${PREVIOUS_MANIFEST:-}" && -f "${PREVIOUS_MANIFEST}" ]]; then

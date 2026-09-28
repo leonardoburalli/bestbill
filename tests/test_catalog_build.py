@@ -17,6 +17,8 @@ def built_catalog(tmp_path):
         placet_path=FIXTURES / "placet.csv",
         mlibero_path=FIXTURES / "mlibero.xml",
         indices_path=FIXTURES / "indices.csv",
+        params_ml_path=FIXTURES / "params_ml.csv",
+        params_e_path=FIXTURES / "params_e.csv",
         out_dir=tmp_path / "catalog",
     )
 
@@ -25,7 +27,7 @@ def test_build_catalog_creates_sqlite_and_manifest(built_catalog):
     assert built_catalog.sqlite_path.exists()
     assert built_catalog.manifest_path.exists()
     manifest = json.loads(built_catalog.manifest_path.read_text(encoding="utf-8"))
-    assert manifest["schema_version"] == 1
+    assert manifest["schema_version"] == 2
     assert manifest["attribution"]
     assert manifest["counts"]["included"] > 0
 
@@ -91,3 +93,23 @@ def test_build_catalog_excludes_implausible_offers_without_failing(built_catalog
     assert manifest["counts"]["total"] == (
         manifest["counts"]["included"] + manifest["counts"]["excluded"]
     )
+
+
+def test_build_catalog_dispatching_identity_check_passes_on_fixture_params(
+    built_catalog,
+):
+    identity = built_catalog.manifest["dispatching_identity"]
+    assert identity["available"]
+    assert identity["ok"]
+    assert built_catalog.manifest["warnings"] == []
+
+
+def test_build_catalog_parameters_table_is_populated(built_catalog):
+    conn = sqlite3.connect(f"file:{built_catalog.sqlite_path}?mode=ro", uri=True)
+    try:
+        (count,) = conn.execute(
+            "SELECT COUNT(*) FROM parameters WHERE source = 'mlibero'"
+        ).fetchone()
+        assert count > 0
+    finally:
+        conn.close()
