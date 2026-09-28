@@ -149,3 +149,43 @@ excluded with reason "riferita a Maggior Tutela":
   The importer keeps the brief's provisional default (02 → per_kwh_extras),
   so offers like this are currently excluded as "prezzi energia
   incompleti" — flagged in `policy.py` for the pricing-semantics review.
+
+## Consumption-tiered prices and discounts (bug fixed 2026-09-28)
+The catalogue used to price a discount or a component's whole annual kWh
+against its nominal €/kWh amount even when the XML restricted it to a
+consumption band -- e.g. "ATENA SECONDA CASA LUCE"
+(`000567ESFML12XX0000AEDOSCL261011`) subtracted `0.07568 × 2700` (all of
+the sample's 2,700 kWh) instead of `0.07568 × 840` (the first 840 kWh/year
+only), ranking it #1 at 438.44 € instead of its correct ≈579.21 €. Full
+scan of the real mercato libero XML (2026-09 snapshot, `e_ml.xml`):
+
+| element | rows (domestic) | unique domestic offers | handling |
+|---|---|---|---|
+| `Sconto/PrezziSconto/VALIDO_DA`+`VALIDO_FINO` | 33 | 21 (16 with a `EUR_KWH` unit; the rest are `EUR_ANNO`/`EUR_UNA_TANTUM` with the `999999`/`999999999` "no limit" sentinel, irrelevant to those units) | implemented: marginal tiers on annual consumption, additive across `PrezziSconto` rows on the same `Sconto` |
+| `Sconto/PeriodoValidita` (any form) | 84 rows / 40 unique | 19 unconditional+priced, **all `DURATA` only** (12/30/1/3 months, always on a `EUR_KWH` discount) | implemented: prorate to the kWh in the first `DURATA` months (capped at 12) |
+| `Sconto/CODICE_COMPONENTE_FASCIA` | 71 rows | 12 unconditional+priced | **not implemented** -- excludes via the guardrail (per-band discount targeting; the current `Discount`/`discount_annual_value_eur` model has no per-band base) |
+| `ComponenteImpresa/IntervalloPrezzi/CONSUMO_DA`+`CONSUMO_A` | 20 | 6 | implemented for MACROAREA 04/06 (energy price/spread) only: marginal tiers on the band's own annual kWh, additive with any flat (non-tiered) price on the same band. MACROAREA 02 (per-kWh extras) and any fixed/power/one-off-fee component with `CONSUMO_DA` excludes the offer ("prezzi a scaglioni non supportati") -- ambiguous (extras aren't banded in the model) |
+| `ComponenteImpresa/IntervalloPrezzi/PeriodoValidita` | 33 rows / 19 unique | 12 domestic | **not implemented** -- excludes via the guardrail (a temporally-restricted component price, always mixed with a same-value "default" row in the sample data; summing both would double-count, and picking one over the other for a rolling 12-month estimate is ambiguous without the full SII transmission spec) |
+| `RiferimentiPrezzoEnergia/COEFFICIENTE` | 38 rows, all domestic | 38 | every value observed is `"1"` (no-op) and no domestic offer transmits more than one `RiferimentiPrezzoEnergia`; only that no-op case is accepted, anything else excludes the offer |
+| `ComponenteImpresa/IntervalloPrezzi/DETTAGLI_MACROAREA` | 0 (only ever seen under `ProdottiServiziAggiuntivi/MACROAREA`, which isn't priced at all) | 0 | not reachable by the parser; no change needed |
+
+**Guardrail** (`bestbill.arera.mlibero`): any child element inside
+`IntervalloPrezzi`, `PrezziSconto`, or a *priced* `Sconto` that isn't on
+the known list above excludes the whole offer with reason "elemento di
+prezzo non gestito: `<path>/<TAG>`", so nothing else in a future snapshot
+is silently mispriced. Running the scan above over the full real
+2026-09 snapshot found exactly the two tags in the table
+(`IntervalloPrezzi/PeriodoValidita`, `Sconto/CODICE_COMPONENTE_FASCIA`);
+no other unknown tag triggered it.
+
+The marginal (tax-bracket-style) tiering for both discounts and component
+prices is *inferred*: the copy of AU "Regole per il calcolo della spesa
+annua stimata" v4.0 available to this importer names "offerte con
+scaglioni di consumo" (§ history, changelog 3.00) without a full worked
+formula for `CONSUMO_DA`/`CONSUMO_A`, and doesn't cover `Sconto`'s
+`VALIDO_DA`/`VALIDO_FINO` fields at all (only `IntervalloPrezzi/
+PeriodoValidita/VALIDO_FINO`, which is a **calendar month**, a different
+field in a different context). The marginal interpretation is confirmed
+by two real offers' own free-text descriptions ("Fino alla soglia di 2200
+kWh/anno sarà applicato ... Oltre tale soglia ...", "sconto del 40% sui
+primi 840 kWh/a").

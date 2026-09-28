@@ -207,6 +207,16 @@ def _conditional_discounts(offer: Offer) -> list[Discount]:
     ]
 
 
+def _annual_band_kwh(monthly_band_kwh: list[dict[str, float]]) -> dict[str, float]:
+    """Sum each band's kWh across all 12 months -- the dimension consumption
+    tiers (ARERA CONSUMO_DA/CONSUMO_A) are evaluated against."""
+    totals: dict[str, float] = {}
+    for band_kwh in monthly_band_kwh:
+        for band, kwh in band_kwh.items():
+            totals[band] = totals.get(band, 0.0) + kwh
+    return totals
+
+
 def _energy_cost(
     offer: Offer,
     monthly_band_kwh: list[dict[str, float]],
@@ -216,26 +226,46 @@ def _energy_cost(
     """Σ price/PUN × kWh (+ spread), with losses applied per
     ``offer.losses_mode``. This is the "energy" breakdown bucket and the
     base for percent-unit discounts (docs/pricing-policy.md §6-7).
+
+    Flat prices/spreads are per-month; consumption-tiered prices
+    (``energy_price_tiers_eur_kwh``/``spread_tiers_eur_kwh``) are
+    evaluated once against each band's own annual kWh -- see
+    ``bestbill.arera.policy.band_value_eur``. The spread is a scalar
+    (doesn't vary by month), so summing per month or computing it once
+    against the annual band total is equivalent; only the PUN index term
+    must stay monthly.
     """
     index_multiplier, spread_multiplier = _loss_multipliers(offer)
+    annual_band_kwh = _annual_band_kwh(monthly_band_kwh)
     energy_cost = 0.0
     if offer.price_type is PriceType.FIXED:
-        for band_kwh in monthly_band_kwh:
-            for band, kwh in band_kwh.items():
-                price = offer.energy_price_eur_kwh[band]
-                spread = offer.spread_eur_kwh[band]
-                energy_cost += kwh * (
-                    price * index_multiplier + spread * spread_multiplier
-                )
+        for band, kwh in annual_band_kwh.items():
+            price_value = policy.band_value_eur(
+                offer.energy_price_eur_kwh[band],
+                offer.energy_price_tiers_eur_kwh.get(band),
+                kwh,
+            )
+            spread_value = policy.band_value_eur(
+                offer.spread_eur_kwh[band],
+                offer.spread_tiers_eur_kwh.get(band),
+                kwh,
+            )
+            energy_cost += (
+                price_value * index_multiplier + spread_value * spread_multiplier
+            )
     else:
         assert pun_by_month is not None
         for month, band_kwh in zip(months, monthly_band_kwh, strict=True):
             pun_value = pun_by_month[month]
-            for band, kwh in band_kwh.items():
-                spread = offer.spread_eur_kwh[band]
-                energy_cost += kwh * (
-                    pun_value * index_multiplier + spread * spread_multiplier
-                )
+            for kwh in band_kwh.values():
+                energy_cost += kwh * pun_value * index_multiplier
+        for band, kwh in annual_band_kwh.items():
+            spread_value = policy.band_value_eur(
+                offer.spread_eur_kwh[band],
+                offer.spread_tiers_eur_kwh.get(band),
+                kwh,
+            )
+            energy_cost += spread_value * spread_multiplier
     return energy_cost
 
 
@@ -253,8 +283,9 @@ def _offer_breakdown(
     power_fee = offer.power_fee_eur_kw_year * committed_power_kw
     dispatching = total_kwh * offer.dispatching_eur_kwh
     one_off = offer.one_off_fee_eur
+    monthly_kwh = [sum(band_kwh.values()) for band_kwh in monthly_band_kwh]
     discounts = sum(
-        policy.discount_annual_value_eur(d, total_kwh, energy)
+        policy.discount_annual_value_eur(d, total_kwh, energy, monthly_kwh)
         for d in _priced_discounts(offer)
     )
     total = (
@@ -300,18 +331,24 @@ def _break_even_pun(
         + total_kwh * offer.per_kwh_extras_eur
         + total_kwh * offer.dispatching_eur_kwh
     )
-    spread_energy_cost = 0.0
-    for band_kwh in monthly_band_kwh:
-        for band, kwh in band_kwh.items():
-            spread = offer.spread_eur_kwh[band]
-            spread_energy_cost += kwh * spread * spread_multiplier
+    annual_band_kwh = _annual_band_kwh(monthly_band_kwh)
+    spread_energy_cost = (
+        sum(
+            policy.band_value_eur(
+                offer.spread_eur_kwh[band], offer.spread_tiers_eur_kwh.get(band), kwh
+            )
+            for band, kwh in annual_band_kwh.items()
+        )
+        * spread_multiplier
+    )
     rest += spread_energy_cost
     # Discounts are priced against the realised energy cost; approximate it
     # here with the spread-only energy cost (the PUN part cancels out at
     # equilibrium for EUR/EUR_KWH discounts, and percent discounts are an
     # approximation either way -- see policy.py for the percent caveat).
+    monthly_kwh = [sum(band_kwh.values()) for band_kwh in monthly_band_kwh]
     discount_total = sum(
-        policy.discount_annual_value_eur(d, total_kwh, spread_energy_cost)
+        policy.discount_annual_value_eur(d, total_kwh, spread_energy_cost, monthly_kwh)
         for d in _priced_discounts(offer)
     )
     rest -= discount_total

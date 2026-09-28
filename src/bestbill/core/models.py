@@ -24,6 +24,7 @@ __all__ = [
     "DiscountValidity",
     "DiscountUnit",
     "Discount",
+    "ConsumptionTier",
     "Offer",
     "MonthlyConsumption",
     "ConsumptionProfile",
@@ -184,6 +185,56 @@ class Discount(BaseModel):
     amount: float
     unit: DiscountUnit
     applies_before_vat: bool = True
+    #: Annual-consumption band this discount applies to (ARERA
+    #: Sconto/PrezziSconto VALIDO_DA/VALIDO_FINO), only meaningful for
+    #: ``DiscountUnit.EUR_KWH``: the discount applies to the kWh consumed
+    #: within [consumption_from_kwh, consumption_to_kwh) of the customer's
+    #: annual consumption. Multiple ``PrezziSconto`` tiers on the same
+    #: ``Sconto`` become separate ``Discount`` objects and are additive
+    #: over their ranges (see ``bestbill.arera.policy``). ``None`` means no
+    #: band restriction (the whole annual consumption).
+    consumption_from_kwh: float | None = Field(default=None, ge=0)
+    consumption_to_kwh: float | None = Field(default=None, ge=0)
+    #: First N months (from activation) this discount is valid for (ARERA
+    #: Sconto/PeriodoValidita/DURATA, only ever observed on €/kWh
+    #: discounts); ``None`` means the whole 12-month estimate window.
+    duration_months: int | None = Field(default=None, ge=1)
+
+    @model_validator(mode="after")
+    def _consumption_band_is_valid(self) -> Discount:
+        if (
+            self.consumption_from_kwh is not None
+            and self.consumption_to_kwh is not None
+            and self.consumption_from_kwh > self.consumption_to_kwh
+        ):
+            raise ValueError("consumption_from_kwh must be <= consumption_to_kwh")
+        return self
+
+
+class ConsumptionTier(BaseModel):
+    """A consumption-based price tier (ARERA IntervalloPrezzi
+    CONSUMO_DA/CONSUMO_A): the price applies to the portion of the
+    offer's own band annual consumption within
+    ``[from_kwh, to_kwh)`` (``to_kwh=None`` means unbounded). Tiers on the
+    same band are additive over their ranges (marginal, like a tax
+    bracket, confirmed by the ATENA/000190 sample offers' own
+    descriptions -- see docs/pricing-policy.md); *inferred* since the AU
+    "Regole per il calcolo della spesa annua stimata" v4.0 copy available
+    to this importer only names "scaglioni di consumo" without a full
+    worked formula.
+    """
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    from_kwh: float = Field(ge=0)
+    to_kwh: float | None = Field(default=None, ge=0)
+    price_eur_kwh: float
+
+    @model_validator(mode="after")
+    def _range_is_valid(self) -> ConsumptionTier:
+        if self.to_kwh is not None and self.to_kwh < self.from_kwh:
+            raise ValueError("to_kwh must be >= from_kwh")
+        return self
 
 
 def _next_month(d: date) -> date:
@@ -217,6 +268,18 @@ class Offer(BaseModel):
     energy_price_eur_kwh: dict[str, float] = Field(default_factory=dict)
     #: €/kWh spread added on top of PUN (variable) or the fixed price (fixed).
     spread_eur_kwh: dict[str, float] = Field(default_factory=dict)
+    #: Consumption-tiered ADDITIONS to ``energy_price_eur_kwh`` per band
+    #: (ARERA IntervalloPrezzi CONSUMO_DA/CONSUMO_A, fixed offers only --
+    #: see ``ConsumptionTier`` and ``bestbill.arera.policy``). The final
+    #: per-band price is ``energy_price_eur_kwh[band] * kwh_in_band +
+    #: tiered_annual_value(energy_price_tiers_eur_kwh[band], kwh_in_band)``.
+    #: Empty for every band that has no tiered pricing.
+    energy_price_tiers_eur_kwh: dict[str, list[ConsumptionTier]] = Field(
+        default_factory=dict
+    )
+    #: Same as ``energy_price_tiers_eur_kwh`` but for ``spread_eur_kwh``
+    #: (variable offers, or the MACROAREA 04/06 spread on fixed offers).
+    spread_tiers_eur_kwh: dict[str, list[ConsumptionTier]] = Field(default_factory=dict)
     #: Annual fixed commercial fee, already converted to €/year.
     fixed_fee_eur_year: float = Field(ge=0)
     #: Other per-kWh extras already in €/kWh (dispatching, capacity market,
@@ -312,6 +375,20 @@ class Offer(BaseModel):
             and self.valid_from > self.valid_to
         ):
             raise ValueError("valid_from must be <= valid_to")
+
+        tier_bands = set(self.energy_price_tiers_eur_kwh) | set(
+            self.spread_tiers_eur_kwh
+        )
+        if tier_bands - expected:
+            raise ValueError(
+                f"tier bands {sorted(tier_bands - expected)} not in "
+                f"band_structure {self.band_structure!r} (expected {sorted(expected)})"
+            )
+        if self.price_type is PriceType.VARIABLE and self.energy_price_tiers_eur_kwh:
+            raise ValueError(
+                "variable offers must not set energy_price_tiers_eur_kwh "
+                "(price comes from PUN + spread)"
+            )
 
         return self
 

@@ -47,6 +47,48 @@ Codes declared by one offer are additive (no overlap by construction). Unit €/
 - IVA_SCONTO 01: subtract the nominal amount. IVA_SCONTO 02: subtract nominal ÷ 1.10 (flat 10% household VAT).
 - TIPOLOGIA 01 (UM 01 €/year or UM 05 €): fixed amount. TIPOLOGIA 03 (UM 03 €/kWh): × kWh. UM 06 (%): applied to the energy base (fixed: Σ MACROAREA 04 energy; variable: PUN×1.10 + spread).
 - Conditional discounts: kept for display only, with their description.
+- **Consumption-tiered €/kWh discounts** (PrezziSconto VALIDO_DA/VALIDO_FINO,
+  observed on the real "ATENA SECONDA CASA LUCE" offer and others): the
+  discount only applies to the annual kWh inside `[VALIDO_DA, VALIDO_FINO)`,
+  not the whole annual consumption (bug fixed 2026-09-28 -- see
+  `docs/arera-data.md` "Consumption-tiered prices and discounts"). Multiple
+  PrezziSconto tiers on the same Sconto are additive over their ranges.
+- **Month-limited €/kWh discounts** (Sconto/PeriodoValidita/DURATA, only
+  ever observed on €/kWh discounts): apply only to the kWh consumed in the
+  first `DURATA` months of the 12-month estimate (capped at 12). Any other
+  PeriodoValidita form (VALIDO_FINO, MESE_VALIDITA) on a discount that
+  would otherwise be priced excludes the whole offer (ambiguous mapping
+  onto the rolling 12-month window).
+- Sconto/CODICE_COMPONENTE_FASCIA (per-band discount targeting) isn't
+  implemented; a priced Sconto carrying it excludes the whole offer.
+
+## Consumption-tiered component prices (ComponenteImpresa CONSUMO_DA/CONSUMO_A)
+- The price applies to the portion of the offer's own band annual
+  consumption inside `[CONSUMO_DA, CONSUMO_A]`, additive/marginal like a
+  tax bracket (confirmed by the 000190* sample offer's own description);
+  *inferred*, see `docs/arera-data.md`.
+- Only supported on MACROAREA 04/06 (energy price for fixed offers,
+  spread for variable offers); MACROAREA 02 (per-kWh extras, not banded in
+  the model) and any fixed/power/one-off fee with CONSUMO_DA/CONSUMO_A
+  excludes the offer with "prezzi a scaglioni non supportati" rather than
+  guess.
+- Overlapping/inconsistent tier rows also exclude the offer with the same
+  reason.
+
+## Guardrail: unhandled price-affecting elements
+Any child element inside IntervalloPrezzi, PrezziSconto or a *priced*
+Sconto that isn't in this document's known list excludes the whole offer
+with reason "elemento di prezzo non gestito: <path>/<TAG>" -- see
+`docs/arera-data.md` for the full scan of the real catalogue and which
+tags this currently affects (IntervalloPrezzi/PeriodoValidita, Sconto/
+CODICE_COMPONENTE_FASCIA).
+
+## RiferimentiPrezzoEnergia/COEFFICIENTE
+Only COEFFICIENTE == "1" (a no-op) is accepted; any other value, or more
+than one RiferimentiPrezzoEnergia on the same offer, excludes the offer
+rather than guess at combining multiple indices (verified against the
+real catalogue: every domestic offer transmits COEFFICIENTE "1" with a
+single index).
 
 ## Result breakdown per offer
 energy, fixed fees, other €/kWh, power fee, dispatching, one-off, discounts, total. Label: "costo materia energia (IVA esclusa)".

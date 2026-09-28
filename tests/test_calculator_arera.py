@@ -4,6 +4,7 @@ import pytest
 
 from bestbill.core.calculator import compare, estimate_annual_cost
 from bestbill.core.models import (
+    ConsumptionTier,
     CustomerType,
     Discount,
     DiscountUnit,
@@ -353,3 +354,205 @@ def test_break_even_pun_correct_with_dispatching_discounts_and_one_off():
         r.cost_eur for r in comparison_at_break_even.results if r.offer_id == "var"
     )
     assert var_cost == pytest.approx(fixed_cost, abs=1e-6)
+
+
+# --- Consumption-tiered discounts (ARERA Sconto/PrezziSconto VALIDO_DA/
+# VALIDO_FINO, docs/pricing-policy.md and the ATENA sample offer) ---
+
+
+def test_tiered_discount_only_applies_below_valido_fino():
+    """Regression test for the ATENA bug: a discount with VALIDO_DA/
+    VALIDO_FINO must only apply to the kWh inside that band, not the
+    customer's whole annual consumption.
+    """
+    profile = make_profile([225.0] * 12)  # 2700 kWh/year
+    pun = make_pun([0.10] * 12)
+    discount = Discount(
+        name="Sconto 40% sui primi 840 kWh/a",
+        validity=DiscountValidity.WITHIN_12_MONTHS,
+        conditional=False,
+        amount=0.075680,
+        unit=DiscountUnit.EUR_KWH,
+        consumption_from_kwh=0.0,
+        consumption_to_kwh=840.0,
+    )
+    offer = fixed_offer(
+        price=0.1774,
+        spread=0.0,
+        fee=99.0,
+        dispatching_eur_kwh=0.024,
+        discounts=[discount],
+    )
+
+    comparison = compare([offer], profile, pun)
+
+    expected = 0.1774 * 2700 + 99 + 0.024 * 2700 - 0.075680 * 840
+    assert comparison.results[0].cost_eur == pytest.approx(expected, abs=1e-6)
+    assert comparison.results[0].cost_eur == pytest.approx(579.21, abs=0.01)
+    # The old (buggy) behaviour subtracted 0.075680 * 2700 = 204.34, giving
+    # a materially lower (wrong) cost -- guard against regressing to it.
+    wrong_cost = 0.1774 * 2700 + 99 + 0.024 * 2700 - 0.075680 * 2700
+    assert comparison.results[0].cost_eur != pytest.approx(wrong_cost, abs=1.0)
+
+
+@pytest.mark.parametrize(
+    ("total_kwh", "expected_discount"),
+    [
+        (500.0, 0.075680 * 500.0),  # entirely below VALIDO_FINO
+        (840.0, 0.075680 * 840.0),  # exactly at VALIDO_FINO
+        (2700.0, 0.075680 * 840.0),  # above VALIDO_FINO: capped at the band
+    ],
+)
+def test_tiered_discount_boundary_cases(total_kwh, expected_discount):
+    monthly = total_kwh / 12.0
+    profile = make_profile([monthly] * 12)
+    pun = make_pun([0.10] * 12)
+    discount = Discount(
+        name="Sconto a scaglione",
+        validity=DiscountValidity.WITHIN_12_MONTHS,
+        conditional=False,
+        amount=0.075680,
+        unit=DiscountUnit.EUR_KWH,
+        consumption_from_kwh=0.0,
+        consumption_to_kwh=840.0,
+    )
+    offer = fixed_offer(price=0.10, spread=0.0, fee=0.0, discounts=[discount])
+
+    comparison = compare([offer], profile, pun)
+
+    assert comparison.results[0].breakdown.discounts == pytest.approx(
+        expected_discount, abs=1e-6
+    )
+
+
+def test_multiple_discount_tiers_are_additive_over_their_ranges():
+    """Multiple PrezziSconto tiers on the same Sconto (e.g. 0-1000,
+    1001-1500, 1501-3000) become separate ``Discount`` objects and must
+    add up marginally (docs/pricing-policy.md).
+    """
+    profile = make_profile([250.0] * 12)  # 3000 kWh/year
+    pun = make_pun([0.10] * 12)
+    tiers = [
+        Discount(
+            name="tier1",
+            validity=DiscountValidity.WITHIN_12_MONTHS,
+            conditional=False,
+            amount=0.265,
+            unit=DiscountUnit.EUR_KWH,
+            consumption_from_kwh=0.0,
+            consumption_to_kwh=1000.0,
+        ),
+        Discount(
+            name="tier2",
+            validity=DiscountValidity.WITHIN_12_MONTHS,
+            conditional=False,
+            amount=0.173,
+            unit=DiscountUnit.EUR_KWH,
+            consumption_from_kwh=1001.0,
+            consumption_to_kwh=1500.0,
+        ),
+        Discount(
+            name="tier3",
+            validity=DiscountValidity.WITHIN_12_MONTHS,
+            conditional=False,
+            amount=0.1798,
+            unit=DiscountUnit.EUR_KWH,
+            consumption_from_kwh=1501.0,
+            consumption_to_kwh=3000.0,
+        ),
+    ]
+    offer = fixed_offer(price=0.20, spread=0.0, fee=0.0, discounts=tiers)
+
+    comparison = compare([offer], profile, pun)
+
+    expected_discount = 0.265 * 1000 + 0.173 * 499 + 0.1798 * 1499
+    assert comparison.results[0].breakdown.discounts == pytest.approx(
+        expected_discount, abs=1e-6
+    )
+
+
+def test_duration_months_prorates_discount_to_first_n_months():
+    """ARERA Sconto/PeriodoValidita/DURATA: a discount valid for the first
+    N months only applies to the kWh consumed in those months.
+    """
+    profile = make_profile([100.0, 200.0] + [50.0] * 10)
+    pun = make_pun([0.10] * 12)
+    discount = Discount(
+        name="Sconto primo mese",
+        validity=DiscountValidity.WITHIN_12_MONTHS,
+        conditional=False,
+        amount=0.175,
+        unit=DiscountUnit.EUR_KWH,
+        duration_months=1,
+    )
+    offer = fixed_offer(price=0.20, spread=0.0, fee=0.0, discounts=[discount])
+
+    comparison = compare([offer], profile, pun)
+
+    assert comparison.results[0].breakdown.discounts == pytest.approx(
+        0.175 * 100.0, abs=1e-6
+    )
+
+
+# --- Consumption-tiered component prices (ARERA IntervalloPrezzi
+# CONSUMO_DA/CONSUMO_A) ---
+
+
+def test_tiered_energy_price_is_marginal_per_band():
+    profile = make_profile([100.0] * 12)  # 1200 kWh/year
+    pun = make_pun([0.10] * 12)
+    tiers = [
+        ConsumptionTier(from_kwh=0.0, to_kwh=1000.0, price_eur_kwh=0.10),
+        ConsumptionTier(from_kwh=1000.0, to_kwh=None, price_eur_kwh=0.15),
+    ]
+    offer = fixed_offer(
+        price=0.0,
+        spread=0.0,
+        fee=0.0,
+        energy_price_tiers_eur_kwh={"mono": tiers},
+    )
+
+    comparison = compare([offer], profile, pun)
+
+    expected = 1000 * 0.10 + 200 * 0.15
+    assert comparison.results[0].cost_eur == pytest.approx(expected, abs=1e-6)
+
+
+def test_tiered_energy_price_below_first_tier_upper_bound():
+    profile = make_profile([50.0] * 12)  # 600 kWh/year, entirely in tier 1
+    pun = make_pun([0.10] * 12)
+    tiers = [
+        ConsumptionTier(from_kwh=0.0, to_kwh=1000.0, price_eur_kwh=0.10),
+        ConsumptionTier(from_kwh=1000.0, to_kwh=None, price_eur_kwh=0.15),
+    ]
+    offer = fixed_offer(
+        price=0.0,
+        spread=0.0,
+        fee=0.0,
+        energy_price_tiers_eur_kwh={"mono": tiers},
+    )
+
+    comparison = compare([offer], profile, pun)
+
+    assert comparison.results[0].cost_eur == pytest.approx(600 * 0.10, abs=1e-6)
+
+
+def test_tiered_price_layers_on_top_of_flat_price():
+    """A flat base price plus a tiered surcharge above a threshold (the
+    000670* sample offers) must add up, not overwrite each other.
+    """
+    profile = make_profile([250.0] * 12)  # 3000 kWh/year
+    pun = make_pun([0.10] * 12)
+    tiers = [ConsumptionTier(from_kwh=2500.0, to_kwh=None, price_eur_kwh=0.0275)]
+    offer = variable_offer(
+        spread=0.0,
+        fee=0.0,
+        spread_tiers_eur_kwh={"mono": tiers},
+    )
+
+    comparison = compare([offer], profile, pun)
+
+    expected_energy = 3000 * 0.10 + 500 * 0.0275
+    assert comparison.results[0].breakdown.energy == pytest.approx(
+        expected_energy, abs=1e-6
+    )

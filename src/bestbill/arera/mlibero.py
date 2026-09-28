@@ -22,8 +22,10 @@ from bestbill.arera.codes import TipologiaFasce
 from bestbill.arera.parameters import Parameters
 from bestbill.core.models import (
     BandStructure,
+    ConsumptionTier,
     CustomerType,
     Discount,
+    DiscountUnit,
     GeoRestriction,
     Offer,
     OfferSource,
@@ -107,14 +109,39 @@ def _residency(el: ET.Element) -> Residency:
     }.get(code, Residency.ANY)
 
 
+#: IntervalloPrezzi child tags this importer understands. Anything else
+#: (e.g. PeriodoValidita) excludes the whole offer via
+#: ``_interval_unknown_tags`` -- see the module's guardrail policy.
+_INTERVALLO_KNOWN_TAGS = frozenset(
+    {"PREZZO", "UNITA_MISURA", "FASCIA_COMPONENTE", "CONSUMO_DA", "CONSUMO_A"}
+)
+
+
+def _interval_unknown_tags(interval: ET.Element) -> list[str]:
+    return sorted({_local(c.tag) for c in interval} - _INTERVALLO_KNOWN_TAGS)
+
+
 def _parse_componenti(
     el: ET.Element, price_type: PriceType, tipologia_fasce: str
-) -> tuple[dict[str, float], dict[str, float], float, float, float, str | None]:
-    """Returns (energy_price, spread, per_kwh_extras, fixed_fee, one_off,
-    exclusion_reason).
+) -> tuple[
+    dict[str, float],
+    dict[str, float],
+    dict[str, list[tuple[float, float | None, float]]],
+    dict[str, list[tuple[float, float | None, float]]],
+    float,
+    float,
+    float,
+    str | None,
+]:
+    """Returns (energy_price, spread, energy_tier_rows, spread_tier_rows,
+    per_kwh_extras, fixed_fee, one_off, exclusion_reason). The tier rows
+    are raw (CONSUMO_DA, CONSUMO_A, PREZZO) tuples per band, still to be
+    validated by ``policy.build_consumption_tiers``.
     """
     energy_price: dict[str, float] = {}
     spread: dict[str, float] = {}
+    energy_tier_rows: dict[str, list[tuple[float, float | None, float]]] = {}
+    spread_tier_rows: dict[str, list[tuple[float, float | None, float]]] = {}
     extras_values: list[float] = []
     fixed_fee = 0.0
     one_off = 0.0
@@ -126,13 +153,39 @@ def _parse_componenti(
         if macroarea is None or not intervals:
             continue
         for interval in intervals:
+            unknown_tags = _interval_unknown_tags(interval)
+            if unknown_tags:
+                unknown_reason = (
+                    "elemento di prezzo non gestito: "
+                    f"IntervalloPrezzi/{unknown_tags[0]}"
+                )
+                return {}, {}, {}, {}, 0.0, 0.0, 0.0, unknown_reason
             unita = _text(interval, "UNITA_MISURA")
             prezzo = _to_float(_text(interval, "PREZZO"))
             if unita is None or prezzo is None:
                 continue
+            consumo_da = _to_float(_text(interval, "CONSUMO_DA"))
+            consumo_a = _to_float(_text(interval, "CONSUMO_A"))
             role, reason = policy.classify_component(macroarea, unita, price_type)
             if role is None:
-                return {}, {}, 0.0, 0.0, 0.0, reason
+                return {}, {}, {}, {}, 0.0, 0.0, 0.0, reason
+            if consumo_da is not None and role not in (
+                policy.ComponentRole.ENERGY_PRICE,
+                policy.ComponentRole.SPREAD,
+            ):
+                # Per-kWh extras aren't banded in the model and fixed/power/
+                # one-off fees aren't kWh-scaled at all -- tiering them is
+                # ambiguous, so exclude rather than guess (docs/arera-data.md).
+                return (
+                    {},
+                    {},
+                    {},
+                    {},
+                    0.0,
+                    0.0,
+                    0.0,
+                    policy.UNSUPPORTED_TIERED_PRICE_REASON,
+                )
             if role == policy.ComponentRole.FIXED_FEE:
                 fixed_fee += prezzo
             elif role == policy.ComponentRole.ONE_OFF:
@@ -155,6 +208,8 @@ def _parse_componenti(
                     return (
                         {},
                         {},
+                        {},
+                        {},
                         0.0,
                         0.0,
                         0.0,
@@ -163,15 +218,34 @@ def _parse_componenti(
                             f"TIPOLOGIA_FASCE {tipologia_fasce!r}"
                         ),
                     )
-                target = (
-                    energy_price
-                    if role == policy.ComponentRole.ENERGY_PRICE
-                    else spread
-                )
-                target[band] = target.get(band, 0.0) + prezzo
+                if consumo_da is not None:
+                    tier_rows = (
+                        energy_tier_rows
+                        if role == policy.ComponentRole.ENERGY_PRICE
+                        else spread_tier_rows
+                    )
+                    tier_rows.setdefault(band, []).append(
+                        (consumo_da, consumo_a, prezzo)
+                    )
+                else:
+                    target = (
+                        energy_price
+                        if role == policy.ComponentRole.ENERGY_PRICE
+                        else spread
+                    )
+                    target[band] = target.get(band, 0.0) + prezzo
 
     extras = sum(extras_values) / len(extras_values) if extras_values else 0.0
-    return energy_price, spread, extras, fixed_fee, one_off, None
+    return (
+        energy_price,
+        spread,
+        energy_tier_rows,
+        spread_tier_rows,
+        extras,
+        fixed_fee,
+        one_off,
+        None,
+    )
 
 
 def _power_fee(el: ET.Element) -> float:
@@ -206,6 +280,52 @@ def _dispatching(
     return policy.combine_dispatching(results), None
 
 
+#: Sconto direct child tags this importer understands. CODICE_COMPONENTE_FASCIA
+#: (per-band discount targeting) isn't implemented -- see the module's
+#: guardrail policy.
+_SCONTO_KNOWN_CHILD_TAGS = frozenset(
+    {
+        "NOME",
+        "DESCRIZIONE",
+        "VALIDITA",
+        "IVA_SCONTO",
+        "Condizione",
+        "PrezziSconto",
+        "PeriodoValidita",
+    }
+)
+
+#: PrezziSconto child tags this importer understands.
+_PREZZI_SCONTO_KNOWN_TAGS = frozenset(
+    {"TIPOLOGIA", "UNITA_MISURA", "PREZZO", "VALIDO_DA", "VALIDO_FINO"}
+)
+
+
+def _parse_period_duration(sconto: ET.Element) -> tuple[int | None, str | None]:
+    """Parse Sconto/PeriodoValidita/DURATA (whole months from activation,
+    the only form observed on a priced -- unconditional, on-entry/within-
+    12-months -- domestic Sconto in the real catalogue). VALIDO_FINO
+    (calendar month) and MESE_VALIDITA restrict validity to a specific
+    calendar window that doesn't map onto this engine's rolling 12-month
+    estimate unambiguously, so the caller excludes the whole offer rather
+    than guess.
+    """
+    periodo = sconto.find(f"{_NS}PeriodoValidita")
+    if periodo is None:
+        return None, None
+    for child in periodo:
+        tag = _local(child.tag)
+        if tag != "DURATA":
+            return (
+                None,
+                f"elemento di prezzo non gestito: Sconto/PeriodoValidita/{tag}",
+            )
+    durata = _text(periodo, "DURATA")
+    if durata is None:
+        return None, None
+    return int(float(durata)), None
+
+
 def _parse_discounts(
     el: ET.Element,
 ) -> tuple[list[Discount], str | None]:
@@ -227,15 +347,51 @@ def _parse_discounts(
             else None
         )
         conditional = condizione_code != "00"
+        would_be_priced = policy.discount_is_priced(validity, conditional)
+
+        duration_months: int | None = None
+        if would_be_priced:
+            unknown_tags = sorted(
+                {_local(c.tag) for c in sconto} - _SCONTO_KNOWN_CHILD_TAGS
+            )
+            if unknown_tags:
+                return [], f"elemento di prezzo non gestito: Sconto/{unknown_tags[0]}"
+            duration_months, duration_reason = _parse_period_duration(sconto)
+            if duration_reason is not None:
+                return [], duration_reason
+
         iva_code = _text(sconto, "IVA_SCONTO")
         for prezzo_sconto in sconto.findall(f"{_NS}PrezziSconto"):
             tipologia = _text(prezzo_sconto, "TIPOLOGIA")
             if tipologia == _SCONTO_TIPOLOGIA_MAGGIOR_TUTELA:
                 return [], policy.MAGGIOR_TUTELA_REASON
+            if would_be_priced:
+                unknown_ps_tags = sorted(
+                    {_local(c.tag) for c in prezzo_sconto} - _PREZZI_SCONTO_KNOWN_TAGS
+                )
+                if unknown_ps_tags:
+                    return [], (
+                        "elemento di prezzo non gestito: "
+                        f"PrezziSconto/{unknown_ps_tags[0]}"
+                    )
             unita = _text(prezzo_sconto, "UNITA_MISURA")
             prezzo = _to_float(_text(prezzo_sconto, "PREZZO"))
             if unita is None or prezzo is None:
                 continue
+            discount_unit = policy.unita_misura_to_discount_unit(unita)
+            consumption_from_kwh = None
+            consumption_to_kwh = None
+            if discount_unit is DiscountUnit.EUR_KWH:
+                consumption_from_kwh = _to_float(_text(prezzo_sconto, "VALIDO_DA"))
+                consumption_to_kwh = _to_float(_text(prezzo_sconto, "VALIDO_FINO"))
+            elif duration_months is not None:
+                # DURATA was only ever observed on €/kWh discounts; a
+                # month-limited discount in another unit is ambiguous
+                # (prorate the lump sum? apply it in full regardless?).
+                return [], (
+                    "Sconto/PeriodoValidita/DURATA non supportata per unità "
+                    f"diversa da €/kWh: {discount_unit!r}"
+                )
             discounts.append(
                 Discount(
                     name=name,
@@ -243,8 +399,15 @@ def _parse_discounts(
                     validity=validity,
                     conditional=conditional,
                     amount=policy.discount_nominal_to_pre_vat(prezzo, iva_code),
-                    unit=policy.unita_misura_to_discount_unit(unita),
+                    unit=discount_unit,
                     applies_before_vat=True,
+                    consumption_from_kwh=consumption_from_kwh,
+                    consumption_to_kwh=consumption_to_kwh,
+                    duration_months=(
+                        duration_months
+                        if discount_unit is DiscountUnit.EUR_KWH
+                        else None
+                    ),
                 )
             )
     return discounts, None
@@ -296,7 +459,12 @@ def parse_offerta(el: ET.Element, params: Parameters) -> ParsedOffer:
         return Excluded(offer_id, f"TIPO_OFFERTA non supportato: {tipo_offerta_code!r}")
 
     if price_type is PriceType.VARIABLE:
-        idx_el = el.find(f"{_NS}RiferimentiPrezzoEnergia")
+        riferimenti = el.findall(f"{_NS}RiferimentiPrezzoEnergia")
+        if len(riferimenti) > 1:
+            return Excluded(
+                offer_id, "più indici di riferimento prezzo energia non supportati"
+            )
+        idx_el = riferimenti[0] if riferimenti else None
         idx_code = _text(idx_el, "IDX_PREZZO_ENERGIA") if idx_el is not None else None
         if idx_code is not None and policy.idx_is_maggior_tutela(idx_code):
             return Excluded(offer_id, policy.MAGGIOR_TUTELA_REASON)
@@ -304,6 +472,9 @@ def parse_offerta(el: ET.Element, params: Parameters) -> ParsedOffer:
             return Excluded(
                 offer_id, f"IDX_PREZZO_ENERGIA non supportato: {idx_code!r}"
             )
+        coefficiente = _text(idx_el, "COEFFICIENTE") if idx_el is not None else None
+        if coefficiente is not None and coefficiente != policy.SUPPORTED_COEFFICIENTE:
+            return Excluded(offer_id, f"COEFFICIENTE {coefficiente!r} non supportato")
 
     tipo_prezzo = el.find(f"{_NS}TipoPrezzo")
     tipologia_fasce = (
@@ -317,11 +488,33 @@ def parse_offerta(el: ET.Element, params: Parameters) -> ParsedOffer:
         )
     band_structure = _band_structure_from_tipologia(tipologia_fasce)
 
-    energy_price, spread, extras, fixed_fee, one_off, reason = _parse_componenti(
-        el, price_type, tipologia_fasce
-    )
+    (
+        energy_price,
+        spread,
+        energy_tier_rows,
+        spread_tier_rows,
+        extras,
+        fixed_fee,
+        one_off,
+        reason,
+    ) = _parse_componenti(el, price_type, tipologia_fasce)
     if reason is not None:
         return Excluded(offer_id, reason)
+
+    energy_price_tiers: dict[str, list[ConsumptionTier]] = {}
+    for band, rows in energy_tier_rows.items():
+        tiers, tier_reason = policy.build_consumption_tiers(rows)
+        if tier_reason is not None:
+            return Excluded(offer_id, tier_reason)
+        assert tiers is not None
+        energy_price_tiers[band] = tiers
+    spread_tiers: dict[str, list[ConsumptionTier]] = {}
+    for band, rows in spread_tier_rows.items():
+        tiers, tier_reason = policy.build_consumption_tiers(rows)
+        if tier_reason is not None:
+            return Excluded(offer_id, tier_reason)
+        assert tiers is not None
+        spread_tiers[band] = tiers
 
     dispatching_result, disp_reason = _dispatching(el, params)
     if dispatching_result is None:
@@ -342,11 +535,16 @@ def parse_offerta(el: ET.Element, params: Parameters) -> ParsedOffer:
             else {"F1", "F23"}
         )
     )
-    if price_type is PriceType.FIXED and set(energy_price) != expected_keys:
-        return Excluded(
-            offer_id,
-            f"prezzi energia incompleti per {band_structure!r}: {sorted(energy_price)}",
-        )
+    if price_type is PriceType.FIXED:
+        combined_energy_keys = set(energy_price) | set(energy_price_tiers)
+        if combined_energy_keys != expected_keys:
+            return Excluded(
+                offer_id,
+                f"prezzi energia incompleti per {band_structure!r}: "
+                f"{sorted(combined_energy_keys)}",
+            )
+        for key in expected_keys - set(energy_price):
+            energy_price[key] = 0.0
     if not spread:
         spread = dict.fromkeys(expected_keys, 0.0)
     elif set(spread) != expected_keys:
@@ -398,6 +596,10 @@ def parse_offerta(el: ET.Element, params: Parameters) -> ParsedOffer:
             band_structure=band_structure,
             energy_price_eur_kwh=energy_price if price_type is PriceType.FIXED else {},
             spread_eur_kwh=spread,
+            energy_price_tiers_eur_kwh=(
+                energy_price_tiers if price_type is PriceType.FIXED else {}
+            ),
+            spread_tiers_eur_kwh=spread_tiers,
             fixed_fee_eur_year=fixed_fee,
             per_kwh_extras_eur=extras,
             power_fee_eur_kw_year=power_fee,

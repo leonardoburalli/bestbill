@@ -41,6 +41,7 @@ from bestbill.arera.codes import (
 )
 from bestbill.arera.parameters import Parameters
 from bestbill.core.models import (
+    ConsumptionTier,
     Discount,
     DiscountUnit,
     DiscountValidity,
@@ -77,6 +78,14 @@ DISPATCHING_IDENTITY_TOLERANCE = 1e-6
 #: Reason string used for every Maggior Tutela exclusion (IDX 05,
 #: TIPO_DISPACCIAMENTO 02/10, Sconto TIPOLOGIA 04).
 MAGGIOR_TUTELA_REASON = "riferita a Maggior Tutela"
+
+#: RiferimentiPrezzoEnergia/COEFFICIENTE: a multiplier on the index
+#: (PERC_IDX × PUN), used from 01/04/2026 when more than one index is
+#: transmitted for an offer. Every domestic offer observed in the real
+#: catalogue carries a single index with COEFFICIENTE "1" (a no-op); we
+#: only accept that no-op case and exclude anything else rather than
+#: guess at combining multiple indices.
+SUPPORTED_COEFFICIENTE = "1"
 
 #: IDX_PREZZO_ENERGIA codes we can price: 12 (PUN GME mensile) and 01,
 #: both treated as the monthly PUN (see module docstring).
@@ -417,26 +426,118 @@ def discount_nominal_to_pre_vat(amount: float, iva_sconto_code: str | None) -> f
     return amount
 
 
+def discount_kwh_base(
+    discount: Discount,
+    total_kwh: float,
+    monthly_kwh: list[float] | None,
+) -> float:
+    """The kWh amount a per-kWh (``EUR_KWH``) discount actually applies
+    to: ``total_kwh`` restricted to the discount's consumption band
+    (``consumption_from_kwh``/``consumption_to_kwh``, ARERA PrezziSconto
+    VALIDO_DA/VALIDO_FINO) and/or to its first ``duration_months`` months
+    (ARERA Sconto/PeriodoValidita/DURATA), if set. ``monthly_kwh`` is the
+    12-month profile's total kWh per month, in chronological order (the
+    engine's "next 12 months" assumption -- see
+    ``bestbill.core.calculator``); required only when ``duration_months``
+    is set.
+    """
+    kwh = total_kwh
+    if discount.duration_months is not None and monthly_kwh is not None:
+        months = min(discount.duration_months, len(monthly_kwh))
+        kwh = sum(monthly_kwh[:months])
+    lower = discount.consumption_from_kwh or 0.0
+    upper = (
+        discount.consumption_to_kwh
+        if discount.consumption_to_kwh is not None
+        else float("inf")
+    )
+    return max(0.0, min(kwh, upper) - lower)
+
+
 def discount_annual_value_eur(
     discount: Discount,
     total_kwh: float,
     energy_base_eur: float,
+    monthly_kwh: list[float] | None = None,
 ) -> float:
     """The annual euro value of a priced discount (0 if it isn't priced).
 
     ``energy_base_eur`` is the base a percent discount (UNITA_MISURA 06)
     applies to: for a fixed offer this is the energy-price part only
     (Σ MACROAREA 04/06); for a variable offer it's PUN×1.10 + spread,
-    summed over the year (docs/pricing-policy.md §6).
+    summed over the year (docs/pricing-policy.md §6). ``monthly_kwh`` is
+    only used for ``EUR_KWH`` discounts with a ``duration_months``
+    restriction -- see ``discount_kwh_base``.
     """
     if not discount_is_priced(discount.validity, discount.conditional):
         return 0.0
     if discount.unit in (DiscountUnit.EUR_YEAR, DiscountUnit.EUR_ONE_OFF):
         return discount.amount
     if discount.unit is DiscountUnit.EUR_KWH:
-        return discount.amount * total_kwh
+        return discount.amount * discount_kwh_base(discount, total_kwh, monthly_kwh)
     if discount.unit is DiscountUnit.PERCENT:
         return energy_base_eur * discount.amount / 100.0
     # EUR_KW_YEAR / EUR_SMC discounts are not meaningful for an EE-only
     # estimate; keep them display-only rather than guess.
     return 0.0
+
+
+def tiered_annual_value_eur(tiers: list[ConsumptionTier], kwh: float) -> float:
+    """Marginal (tax-bracket-style) sum of ``price_i × overlap(kwh, tier_i)``
+    over every tier -- see ``ConsumptionTier``.
+    """
+    total = 0.0
+    for tier in tiers:
+        upper = tier.to_kwh if tier.to_kwh is not None else float("inf")
+        overlap = max(0.0, min(kwh, upper) - tier.from_kwh)
+        total += overlap * tier.price_eur_kwh
+    return total
+
+
+def band_value_eur(
+    flat_price: float,
+    tiers: list[ConsumptionTier] | None,
+    kwh: float,
+) -> float:
+    """A band's annual €: the flat price times ``kwh`` PLUS the marginal
+    value of any consumption tiers layered on top (both can coexist --
+    e.g. a flat base rate plus a tiered surcharge above a threshold; see
+    the 000670* sample offers in docs/arera-data.md).
+    """
+    value = flat_price * kwh
+    if tiers:
+        value += tiered_annual_value_eur(tiers, kwh)
+    return value
+
+
+#: Reason for consumption-tiered (CONSUMO_DA/CONSUMO_A) prices this
+#: importer can't price unambiguously: overlapping tiers, or tiers on a
+#: component role other than energy price/spread (per-kWh extras aren't
+#: banded in the model, and fixed fees/power fees/one-off fees aren't
+#: kWh-scaled at all -- see docs/arera-data.md).
+UNSUPPORTED_TIERED_PRICE_REASON = "prezzi a scaglioni non supportati"
+
+
+def build_consumption_tiers(
+    rows: list[tuple[float, float | None, float]],
+) -> tuple[list[ConsumptionTier], None] | tuple[None, str]:
+    """Build a validated, sorted marginal tier schedule from raw
+    ``(CONSUMO_DA, CONSUMO_A, PREZZO)`` rows on one ComponenteImpresa
+    band. Tiers must not overlap (``None``/very large ``CONSUMO_A``
+    sentinels mean unbounded); overlapping or otherwise inconsistent rows
+    return ``UNSUPPORTED_TIERED_PRICE_REASON`` rather than guess.
+    """
+    ordered = sorted(rows, key=lambda r: r[0])
+    tiers: list[ConsumptionTier] = []
+    previous_to = 0.0
+    for from_kwh, to_kwh, price in ordered:
+        if from_kwh < previous_to:
+            return None, UNSUPPORTED_TIERED_PRICE_REASON
+        try:
+            tiers.append(
+                ConsumptionTier(from_kwh=from_kwh, to_kwh=to_kwh, price_eur_kwh=price)
+            )
+        except ValueError:
+            return None, UNSUPPORTED_TIERED_PRICE_REASON
+        previous_to = to_kwh if to_kwh is not None else float("inf")
+    return tiers, None
