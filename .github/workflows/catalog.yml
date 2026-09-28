@@ -31,17 +31,20 @@ jobs:
       - name: Install
         run: .cicd/install.sh
 
-      - name: Download the previous manifest
+      - name: Download the previous manifest and operators export
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           mkdir -p build/previous
           gh release download catalog-latest -p manifest.json -D build/previous \
             --repo "${{ github.repository }}" || true
+          gh release download catalog-latest -p operators.zip -D build/previous \
+            --repo "${{ github.repository }}" || true
 
       - name: Build and validate the catalogue
         env:
           PREVIOUS_MANIFEST: build/previous/manifest.json
+          PREVIOUS_OPERATORS: build/previous/operators.zip
         run: .cicd/catalog.sh
 
       - name: Upload catalogue as a workflow artifact
@@ -51,6 +54,7 @@ jobs:
           path: |
             build/catalog/catalog.sqlite
             build/catalog/manifest.json
+            build/catalog/operators.zip
           retention-days: 7
 
       - name: Publish to the catalog-latest release
@@ -66,8 +70,12 @@ jobs:
               --notes "Rolling daily ARERA Portale Offerte catalogue snapshot." \
               --latest=false
           fi
+          ASSETS=(build/catalog/catalog.sqlite build/catalog/manifest.json)
+          if [[ -f build/catalog/operators.zip ]]; then
+            ASSETS+=(build/catalog/operators.zip)
+          fi
           gh release upload catalog-latest \
-            build/catalog/catalog.sqlite build/catalog/manifest.json \
+            "${ASSETS[@]}" \
             --repo "${REPO}" --clobber
 
           SNAPSHOT_DATE=$(jq -r '.snapshot_date' build/catalog/manifest.json)
