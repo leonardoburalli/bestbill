@@ -1,6 +1,8 @@
-"""Command-line interface: compare custom (legacy Excel) offers for a
-household's consumption history. Replaces ComparazioneTariffeEE.py and
-visualization.py.
+"""Command-line interface: `bestbill compare` (legacy Excel + optional
+ARERA catalogue) and `bestbill catalog build|fetch`.
+
+For backwards compatibility, invoking `bestbill` with no subcommand (i.e.
+the legacy flags directly) is equivalent to `bestbill compare ...`.
 """
 
 from __future__ import annotations
@@ -12,9 +14,14 @@ import logging
 import pathlib
 import sys
 from collections.abc import Sequence
+from datetime import date
 
+from bestbill.arera.fetch import fetch_indices, fetch_mlibero, fetch_placet
+from bestbill.catalog.build import build_catalog
+from bestbill.catalog.store import CatalogStore
+from bestbill.catalog.validate import validate_catalog_dir
 from bestbill.core.calculator import compare, round_eur
-from bestbill.core.models import Comparison
+from bestbill.core.models import Comparison, Offer
 from bestbill.io.excel import (
     ExcelFormatError,
     list_locations,
@@ -27,33 +34,106 @@ DEFAULT_OUTPUT_DIR = "Output"
 
 log = logging.getLogger(__name__)
 
+_TOP_LEVEL_COMMANDS = ("compare", "catalog")
 
-def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
+
+def _build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         description="Compare electricity offers for a household's 12-month history",
     )
-    parser.add_argument(
+    subparsers = parser.add_subparsers(dest="command")
+
+    compare_parser = subparsers.add_parser(
+        "compare",
+        help="Compare offers for a household (legacy Excel + optional catalogue)",
+    )
+    compare_parser.add_argument(
         "--file", default=DEFAULT_INPUT_FILE, help="Legacy Excel workbook path"
     )
-    parser.add_argument(
+    compare_parser.add_argument(
         "--location", required=True, help="Location (Storico_<location> sheet)"
     )
-    parser.add_argument(
+    compare_parser.add_argument(
         "--pun",
         choices=("actual", "forecast"),
         default="actual",
         help="Which PUN series to use for variable offers",
     )
-    parser.add_argument(
+    compare_parser.add_argument(
         "--output-dir", default=DEFAULT_OUTPUT_DIR, help="Where to write the CSV"
     )
-    parser.add_argument(
+    compare_parser.add_argument(
         "--chart",
         action="store_true",
         default=False,
         help="Also save a bar chart (requires matplotlib)",
     )
-    return parser.parse_args(argv)
+    compare_parser.add_argument(
+        "--catalog",
+        default=None,
+        help="Path to a catalog.sqlite; if given, real ARERA offers are ranked "
+        "alongside the workbook's custom offers",
+    )
+    compare_parser.add_argument(
+        "--residency",
+        choices=("resident", "non_resident"),
+        default="resident",
+        help="Used to filter residents-only/non-residents-only catalogue offers",
+    )
+    compare_parser.add_argument(
+        "--istat-comune",
+        default=None,
+        help="6-digit ISTAT comune code; required to include geo-restricted "
+        "catalogue offers",
+    )
+    compare_parser.add_argument(
+        "--committed-power-kw",
+        type=float,
+        default=3.0,
+        help="Committed power, used to price €/kW/year power fees",
+    )
+
+    catalog_parser = subparsers.add_parser(
+        "catalog", help="Build/fetch the ARERA catalogue"
+    )
+    catalog_subparsers = catalog_parser.add_subparsers(dest="catalog_command")
+
+    build_parser = catalog_subparsers.add_parser(
+        "build", help="Build catalog.sqlite + manifest.json from ARERA source files"
+    )
+    build_parser.add_argument("--placet", required=True, help="PLACET EE CSV path")
+    build_parser.add_argument(
+        "--mlibero", required=True, help="Mercato libero EE XML path"
+    )
+    build_parser.add_argument(
+        "--indices", required=True, help="Historical indices CSV path"
+    )
+    build_parser.add_argument("--out", required=True, help="Output directory")
+    build_parser.add_argument(
+        "--previous-manifest",
+        default=None,
+        help="Previous manifest.json, for the count gate",
+    )
+    build_parser.add_argument(
+        "--snapshot-date",
+        default=None,
+        help="Snapshot date (YYYY-MM-DD); defaults to today",
+    )
+
+    fetch_parser = catalog_subparsers.add_parser(
+        "fetch", help="Download the day's ARERA source files"
+    )
+    fetch_parser.add_argument("--date", required=True, help="Target date (YYYY-MM-DD)")
+    fetch_parser.add_argument("--out", required=True, help="Output directory")
+
+    return parser
+
+
+def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
+    args_list = list(argv) if argv is not None else sys.argv[1:]
+    if not args_list or args_list[0] not in (*_TOP_LEVEL_COMMANDS, "-h", "--help"):
+        args_list = ["compare", *args_list]
+    return _build_parser().parse_args(args_list)
 
 
 def _print_ranking(comparison: Comparison, location: str) -> None:
@@ -164,12 +244,14 @@ def _make_chart(
     return output_path
 
 
-def main(argv: Sequence[str] | None = None) -> int:
-    logging.basicConfig(
-        level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s"
-    )
-    args = parse_args(argv)
+def _catalog_offers(
+    catalog_path: str, istat_comune: str | None, residency: str
+) -> list[Offer]:
+    with CatalogStore(catalog_path) as store:
+        return store.eligible_offers(istat_comune=istat_comune, residency=residency)  # type: ignore[arg-type]
 
+
+def _run_compare(args: argparse.Namespace) -> int:
     try:
         locations = list_locations(args.file)
     except ExcelFormatError as exc:
@@ -192,7 +274,24 @@ def main(argv: Sequence[str] | None = None) -> int:
         return 1
 
     pun_series = actual_pun if args.pun == "actual" else forecast_pun
-    comparison = compare(offers=offers, profile=profile, pun=pun_series)
+
+    if args.catalog:
+        catalog_offers = _catalog_offers(
+            args.catalog, args.istat_comune, args.residency
+        )
+        offers = [*offers, *catalog_offers]
+        log.info(
+            "Loaded %d offers from catalogue %s", len(catalog_offers), args.catalog
+        )
+
+    comparison = compare(
+        offers=offers,
+        profile=profile,
+        pun=pun_series,
+        residency=args.residency,
+        istat_comune=args.istat_comune,
+        committed_power_kw=args.committed_power_kw,
+    )
 
     _print_ranking(comparison, args.location)
 
@@ -205,6 +304,66 @@ def main(argv: Sequence[str] | None = None) -> int:
         log.info("Chart saved to %s", chart_path)
 
     return 0
+
+
+def _run_catalog_build(args: argparse.Namespace) -> int:
+    snapshot_date = (
+        date.fromisoformat(args.snapshot_date) if args.snapshot_date else None
+    )
+    result = build_catalog(
+        placet_path=args.placet,
+        mlibero_path=args.mlibero,
+        indices_path=args.indices,
+        out_dir=args.out,
+        snapshot_date=snapshot_date,
+    )
+    log.info(
+        "Built %s: %d offers included, %d excluded",
+        result.sqlite_path,
+        result.manifest["counts"]["included"],
+        result.manifest["counts"]["excluded"],
+    )
+    validation = validate_catalog_dir(
+        args.out, previous_manifest_path=args.previous_manifest
+    )
+    if not validation.ok:
+        for error in validation.errors:
+            log.error("Validation error: %s", error)
+        return 1
+    log.info("Catalogue validation passed")
+    return 0
+
+
+def _run_catalog_fetch(args: argparse.Namespace) -> int:
+    target = date.fromisoformat(args.date)
+    out_dir = pathlib.Path(args.out)
+    placet_result = fetch_placet(target, out_dir / "PO_Offerte_E_PLACET.csv")
+    mlibero_result = fetch_mlibero(target, out_dir / "PO_Offerte_E_MLIBERO.xml")
+    fetch_indices(out_dir / "indices.csv")
+    log.info(
+        "Fetched PLACET (effective %s) and mercato libero (effective %s) into %s",
+        placet_result.effective_date,
+        mlibero_result.effective_date,
+        out_dir,
+    )
+    return 0
+
+
+def main(argv: Sequence[str] | None = None) -> int:
+    logging.basicConfig(
+        level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s"
+    )
+    args = parse_args(argv)
+
+    if args.command == "catalog":
+        if args.catalog_command == "build":
+            return _run_catalog_build(args)
+        if args.catalog_command == "fetch":
+            return _run_catalog_fetch(args)
+        log.error("Unknown catalog command; use 'build' or 'fetch'")
+        return 2
+
+    return _run_compare(args)
 
 
 if __name__ == "__main__":
