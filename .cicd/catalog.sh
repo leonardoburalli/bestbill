@@ -2,14 +2,14 @@
 # Daily data pipeline: fetch ARERA source files -> build catalog.sqlite ->
 # validate. Set PREVIOUS_MANIFEST to a manifest.json path to enable the
 # count-change gate against the last published snapshot. Set
-# PREVIOUS_OPERATORS to a cached, minimised operators.csv
-# (build/previous/operators.csv) to fall back to it if today's ARERA
+# PREVIOUS_RETAILERS to a cached, minimised retailers.csv
+# (build/previous/retailers.csv) to fall back to it if today's ARERA
 # "Ricerca operatori" fetch fails (see bestbill.arera.fetch.fetch_operators).
 #
 # Data minimisation (see PROVENANCE.md): the raw ARERA export (zip/xlsx)
 # carries addresses and customer contacts and is only ever kept under
 # ${RAW_DIR}, which is never copied to ${OUT_DIR} or published. The build
-# writes a minimised operators.csv (partita_iva/ragione_sociale/sito_web
+# writes a minimised retailers.csv (partita_iva/ragione_sociale/sito_web
 # only) into ${OUT_DIR}; that's what gets published/cached instead.
 # shellcheck source-path=SCRIPTDIR
 source "$(dirname "$0")/lib.sh"
@@ -24,9 +24,9 @@ step "Fetch ARERA source files" \
 OPERATORS_ARG=""
 if [[ -f "${RAW_DIR}/operators.zip" ]]; then
   OPERATORS_ARG="${RAW_DIR}/operators.zip"
-elif [[ -n "${PREVIOUS_OPERATORS:-}" && -f "${PREVIOUS_OPERATORS}" ]]; then
+elif [[ -n "${PREVIOUS_RETAILERS:-}" && -f "${PREVIOUS_RETAILERS}" ]]; then
   echo "Falling back to the previous snapshot's cached operators export"
-  OPERATORS_ARG="${PREVIOUS_OPERATORS}"
+  OPERATORS_ARG="${PREVIOUS_RETAILERS}"
 fi
 
 BUILD_ARGS=(

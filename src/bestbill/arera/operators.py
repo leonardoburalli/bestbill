@@ -11,7 +11,7 @@ details, but this importer reads and keeps **only** ``RAGIONE SOCIALE``
 use, "Riuso dei dati pubblici (Open Data) e copyright"). The catalogue
 pipeline never republishes the raw zip/xlsx (see ``.cicd/catalog.sh``):
 ``bestbill.catalog.build`` writes the parsed name/VAT/website rows out to
-a minimised ``operators.csv`` (``write_operators_csv``), which is what
+a minimised ``retailers.csv`` (``write_operators_csv``), which is what
 gets published/cached; ``parse_operators_file`` accepts that csv back in,
 as well as the raw zip/xlsx, for the next day's fallback.
 """
@@ -155,7 +155,7 @@ def parse_operators_zip(raw: bytes) -> dict[str, Operator]:
 
 
 def parse_operators_csv(raw: bytes) -> dict[str, Operator]:
-    """Parse the minimised ``operators.csv`` this pipeline publishes (see
+    """Parse the minimised ``retailers.csv`` this pipeline publishes (see
     ``write_operators_csv``): UTF-8, header ``partita_iva,ragione_sociale,
     sito_web``, one row per operator, VAT already zero-padded.
     """
@@ -179,7 +179,7 @@ def parse_operators_csv(raw: bytes) -> dict[str, Operator]:
 
 
 def write_operators_csv(operators: dict[str, Operator], path: str | Path) -> None:
-    """Write the minimised ``operators.csv`` we publish instead of the raw
+    """Write the minimised ``retailers.csv`` we publish instead of the raw
     ARERA zip/xlsx: only ``partita_iva``, ``ragione_sociale`` and
     ``sito_web``, UTF-8, one row per operator actually parsed (see the
     module docstring's data-minimisation note and PROVENANCE.md).

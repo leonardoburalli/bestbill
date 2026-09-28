@@ -143,7 +143,7 @@ def _build_parser() -> argparse.ArgumentParser:
         "--operators",
         default=None,
         help="ARERA 'Ricerca operatori' export (.zip, .xlsx, or the "
-        "minimised operators.csv this pipeline publishes), optional; used "
+        "minimised retailers.csv this pipeline publishes), optional; used "
         "to name mercato libero offers by retailer instead of their VAT",
     )
     build_parser.add_argument(

@@ -178,7 +178,7 @@ def build_catalog(
     # this minimised name/VAT/website csv, written next to catalog.sqlite.
     operators_csv_path: Path | None = None
     if operators_path is not None:
-        operators_csv_path = out_dir / "operators.csv"
+        operators_csv_path = out_dir / "retailers.csv"
         write_operators_csv(operators, operators_csv_path)
 
     offers: list[Offer] = []

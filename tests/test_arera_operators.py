@@ -116,7 +116,7 @@ def test_write_operators_csv_has_exactly_the_minimised_columns(tmp_path):
         "01244170526": Operator(name="+Energia", website="http://www.piuenergia.it"),
         "08985501215": Operator(name="100ENERGIA S.R.L.", website=None),
     }
-    csv_path = tmp_path / "operators.csv"
+    csv_path = tmp_path / "retailers.csv"
     write_operators_csv(operators, csv_path)
 
     import csv
@@ -137,7 +137,7 @@ def test_write_operators_csv_omits_addresses_and_contacts(tmp_path):
     # is really asserting the csv has no extra columns beyond CSV_COLUMNS
     # -- see test_write_operators_csv_has_exactly_the_minimised_columns.
     operators = {"12345678901": Operator(name="ACME ENERGIA SPA", website=None)}
-    csv_path = tmp_path / "operators.csv"
+    csv_path = tmp_path / "retailers.csv"
     write_operators_csv(operators, csv_path)
 
     header = csv_path.read_text(encoding="utf-8").splitlines()[0]
@@ -150,7 +150,7 @@ def test_parse_operators_csv_round_trips_write_operators_csv(tmp_path):
         "01244170526": Operator(name="+Energia", website="http://www.piuenergia.it"),
         "08985501215": Operator(name="100ENERGIA S.R.L.", website=None),
     }
-    csv_path = tmp_path / "operators.csv"
+    csv_path = tmp_path / "retailers.csv"
     write_operators_csv(operators, csv_path)
 
     parsed = parse_operators_csv(csv_path.read_bytes())
@@ -159,7 +159,7 @@ def test_parse_operators_csv_round_trips_write_operators_csv(tmp_path):
 
 def test_parse_operators_file_dispatches_on_csv_extension(tmp_path):
     operators = {"01244170526": Operator(name="+Energia", website=None)}
-    csv_path = tmp_path / "operators.csv"
+    csv_path = tmp_path / "retailers.csv"
     write_operators_csv(operators, csv_path)
 
     parsed = parse_operators_file(csv_path)

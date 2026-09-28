@@ -83,7 +83,7 @@ cron `00:00 UTC`):
    source file names, sha256, counts by source/reason/supplier-name-source,
    this attribution text, licence, sources, schema version), validated
    against schema and sanity gates before publishing.
-6. Publishes the sqlite, manifest and a minimised `operators.csv`
+6. Publishes the sqlite, manifest and a minimised `retailers.csv`
    (`partita_iva`/`ragione_sociale`/`sito_web` only — never the raw
    zip/xlsx, which also carries addresses and customer contacts; for the
    next day's fallback) to the rolling GitHub Release `catalog-latest`; if
