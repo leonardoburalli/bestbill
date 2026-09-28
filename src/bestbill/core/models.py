@@ -16,6 +16,13 @@ __all__ = [
     "BandStructure",
     "PriceType",
     "OfferSource",
+    "CustomerType",
+    "Residency",
+    "GeoLevel",
+    "GeoRestriction",
+    "DiscountValidity",
+    "DiscountUnit",
+    "Discount",
     "Offer",
     "MonthlyConsumption",
     "ConsumptionProfile",
@@ -66,6 +73,94 @@ class OfferSource(StrEnum):
     CUSTOM = "custom"
 
 
+class CustomerType(StrEnum):
+    """ARERA TIPO_CLIENTE: 01 domestic, 02 non-domestic."""
+
+    DOMESTIC = "domestic"
+    NON_DOMESTIC = "non_domestic"
+
+
+class Residency(StrEnum):
+    """ARERA DOMESTICO_RESIDENTE: who the offer is restricted to."""
+
+    RESIDENTS = "residents"
+    NON_RESIDENTS = "non_residents"
+    ANY = "any"
+
+
+class GeoLevel(StrEnum):
+    """ARERA ZoneOfferta levels."""
+
+    REGIONE = "regione"
+    PROVINCIA = "provincia"
+    COMUNE = "comune"
+
+
+class GeoRestriction(BaseModel):
+    """An offer's geographic restriction: national if all sets are empty,
+    otherwise the offer is only available where at least one code matches.
+
+    Matching a user's ``istat_comune`` (6-digit ISTAT code) against
+    ``province`` uses the first 3 digits of the comune code as the
+    provincia code, which holds for the classic ISTAT numbering
+    (*inferred*, not verified against an authoritative comune->provincia
+    table). ``regione`` restrictions cannot be verified from the comune
+    code alone (no arithmetic derivation), so a comune that only matches a
+    regione-restricted offer is treated as **not** eligible rather than
+    risk showing an unavailable offer (documented limitation).
+    """
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    regioni: frozenset[str] = frozenset()
+    province: frozenset[str] = frozenset()
+    comuni: frozenset[str] = frozenset()
+
+    def matches(self, istat_comune: str) -> bool:
+        if istat_comune in self.comuni:
+            return True
+        if len(istat_comune) >= 3 and istat_comune[:3] in self.province:
+            return True
+        return False
+
+
+class DiscountValidity(StrEnum):
+    """ARERA Sconto/VALIDITA."""
+
+    ON_ENTRY = "on_entry"
+    WITHIN_12_MONTHS = "within_12_months"
+    BEYOND_12_MONTHS = "beyond_12_months"
+
+
+class DiscountUnit(StrEnum):
+    """ARERA UNITA_MISURA, as used under Sconto/PrezziSconto."""
+
+    EUR_YEAR = "eur_year"
+    EUR_KW_YEAR = "eur_kw_year"
+    EUR_KWH = "eur_kwh"
+    EUR_SMC = "eur_smc"
+    EUR_ONE_OFF = "eur_one_off"
+    PERCENT = "percent"
+
+
+class Discount(BaseModel):
+    """A commercial discount (Sconto). Unconditional first-12-month
+    discounts are priced into the estimate by the engine (see
+    ``bestbill.arera.policy``); conditional discounts are kept for display
+    only.
+    """
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    name: str
+    description: str = ""
+    validity: DiscountValidity
+    conditional: bool
+    amount: float
+    unit: DiscountUnit
+    applies_before_vat: bool = True
+
+
 def _next_month(d: date) -> date:
     if d.month == 12:
         return date(d.year + 1, 1, 1)
@@ -91,8 +186,28 @@ class Offer(BaseModel):
     spread_eur_kwh: dict[str, float] = Field(default_factory=dict)
     #: Annual fixed commercial fee, already converted to €/year.
     fixed_fee_eur_year: float = Field(ge=0)
-    #: Other per-kWh extras (dispatching, capacity market, etc.).
-    other_per_kwh_eur: float = 0.0
+    #: Other per-kWh extras already in €/kWh (dispatching, capacity market,
+    #: renewable price, etc. -- see ``bestbill.arera.policy``).
+    per_kwh_extras_eur: float = 0.0
+    #: Annual power fee, €/kW/year (ARERA UNITA_MISURA 02); priced against a
+    #: committed power input at compare() time (default 3 kW).
+    power_fee_eur_kw_year: float = 0.0
+    #: One-off fee, €, shown but excluded from the annual cost estimate.
+    one_off_fee_eur: float = 0.0
+    #: Commercial discounts; only unconditional first-12-month ones are
+    #: priced (see ``bestbill.arera.policy``), the rest are kept for display.
+    discounts: list[Discount] = Field(default_factory=list)
+
+    #: ARERA TIPO_CLIENTE. MVP only prices domestic offers.
+    customer: CustomerType = CustomerType.DOMESTIC
+    #: ARERA DOMESTICO_RESIDENTE eligibility restriction.
+    residency: Residency = Residency.ANY
+    #: ARERA ZoneOfferta; ``None`` means a national offer.
+    geo: GeoRestriction | None = None
+    #: Whether the engine must multiply energy terms (index/price + spread)
+    #: by (1 + LOSSES). Custom (legacy Excel) offers default to False to
+    #: keep their historical, loss-free pricing.
+    losses_applied_to_energy: bool = False
 
     consumption_min_kwh: float | None = Field(default=None, ge=0)
     consumption_max_kwh: float | None = Field(default=None, ge=0)
@@ -288,6 +403,10 @@ class OfferResult(BaseModel):
     eur_per_kwh_effective: float
     rank: int = Field(ge=1)
     break_even_pun_eur_kwh: float | None = None
+    #: One-off fee, shown but not included in cost_eur.
+    one_off_fee_eur: float = 0.0
+    #: Conditional discounts kept for display only (not priced).
+    conditional_discounts: list[Discount] = Field(default_factory=list)
 
 
 class Assumptions(BaseModel):
@@ -300,6 +419,9 @@ class Assumptions(BaseModel):
     band_split_source: Literal["user", "standard"]
     scenario: Scenario
     statement: str
+    committed_power_kw: float = 3.0
+    residency: Literal["resident", "non_resident"] = "resident"
+    istat_comune: str | None = None
 
 
 class Comparison(BaseModel):
