@@ -18,8 +18,14 @@ step "Smoke: build a catalogue from the ARERA fixtures" \
     --indices tests/fixtures/arera/indices.csv \
     --params-ml tests/fixtures/arera/params_ml.csv \
     --params-e tests/fixtures/arera/params_e.csv \
+    --operators tests/fixtures/arera/operators.xlsx \
     --out "${OUT_DIR}/catalog"
 
-step "Smoke: rank real (fixture) offers for the sample household" \
+step "Smoke: rank catalogue-only offers for the sample household" \
   uv run bestbill compare --file src/bestbill/data/sample.xlsx --location Esempio \
     --catalog "${OUT_DIR}/catalog/catalog.sqlite" --output-dir "${OUT_DIR}"
+
+step "Smoke: rank catalogue + custom offers (standard dispatching) together" \
+  uv run bestbill compare --file src/bestbill/data/sample.xlsx --location Esempio \
+    --catalog "${OUT_DIR}/catalog/catalog.sqlite" --include-custom \
+    --output-dir "${OUT_DIR}"

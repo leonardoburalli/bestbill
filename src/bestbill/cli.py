@@ -16,13 +16,17 @@ import sys
 from collections.abc import Sequence
 from datetime import date
 
+from bestbill.arera import policy
 from bestbill.arera.fetch import (
+    FetchError,
     fetch_indices,
     fetch_mlibero,
+    fetch_operators,
     fetch_parametri_e,
     fetch_parametri_ml,
     fetch_placet,
 )
+from bestbill.arera.parameters import Parameters
 from bestbill.catalog.build import build_catalog
 from bestbill.catalog.store import CatalogStore
 from bestbill.catalog.validate import validate_catalog_dir
@@ -77,8 +81,17 @@ def _build_parser() -> argparse.ArgumentParser:
     compare_parser.add_argument(
         "--catalog",
         default=None,
-        help="Path to a catalog.sqlite; if given, real ARERA offers are ranked "
-        "alongside the workbook's custom offers",
+        help="Path to a catalog.sqlite; if given, ranks catalogue offers only "
+        "by default (see --include-custom to also rank the workbook's offers)",
+    )
+    compare_parser.add_argument(
+        "--include-custom",
+        action="store_true",
+        default=False,
+        help="With --catalog, also rank the workbook's custom offers, priced "
+        "with the catalogue's standard household dispatching (cdispd + "
+        "dispbt_d) so they're comparable to catalogue offers (see "
+        "docs/pricing-policy.md). Ignored without --catalog.",
     )
     compare_parser.add_argument(
         "--residency",
@@ -126,6 +139,12 @@ def _build_parser() -> argparse.ArgumentParser:
         help="PLACET dispatching parameters CSV path (PO_Parametri_E_*.csv)",
     )
     build_parser.add_argument("--out", required=True, help="Output directory")
+    build_parser.add_argument(
+        "--operators",
+        default=None,
+        help="ARERA 'Ricerca operatori' export (.zip or .xlsx), optional; used "
+        "to name mercato libero offers by retailer instead of their VAT",
+    )
     build_parser.add_argument(
         "--previous-manifest",
         default=None,
@@ -208,6 +227,8 @@ def _write_csv(
                 "delta_vs_best_eur",
                 "supplier_eur_per_kwh_effective",
                 "break_even_pun_eur_kwh",
+                "break_even_status",
+                "standard_dispatching_estimate",
             ]
         )
         for result in comparison.results:
@@ -223,6 +244,10 @@ def _write_csv(
                     round_eur(result.break_even_pun_eur_kwh, 4)
                     if result.break_even_pun_eur_kwh is not None
                     else "",
+                    result.break_even_status.value
+                    if result.break_even_status is not None
+                    else "",
+                    "yes" if result.dispatching_is_standard_estimate else "",
                 ]
             )
     return output_path
@@ -277,6 +302,38 @@ def _catalog_offers(
         return store.eligible_offers(istat_comune=istat_comune, residency=residency)  # type: ignore[arg-type]
 
 
+def _with_standard_household_dispatching(
+    offers: list[Offer], catalog_path: str
+) -> list[Offer]:
+    """Price custom (legacy Excel) offers with the catalogue's standard
+    household dispatching (``cdispd`` €/kWh + ``dispbt_d`` €/year, from the
+    PLACET parameters table) so they're comparable to catalogue offers
+    instead of unfairly cheaper for lacking dispatching entirely (see
+    ``--include-custom``, docs/pricing-policy.md).
+    """
+    with CatalogStore(catalog_path) as store:
+        values = store.parameters("placet")
+    result, reason = policy.placet_domestic_dispatching(Parameters(values=values))
+    if result is None:
+        log.warning(
+            "Could not price custom offers with standard household "
+            "dispatching (%s); showing them without dispatching",
+            reason,
+        )
+        return offers
+    return [
+        offer.model_copy(
+            update={
+                "dispatching_eur_kwh": result.eur_kwh,
+                "dispatching_eur_year": result.eur_year,
+                "dispatching_breakdown": result.breakdown,
+                "dispatching_is_standard_estimate": True,
+            }
+        )
+        for offer in offers
+    ]
+
+
 def _run_compare(args: argparse.Namespace) -> int:
     try:
         locations = list_locations(args.file)
@@ -305,10 +362,26 @@ def _run_compare(args: argparse.Namespace) -> int:
         catalog_offers = _catalog_offers(
             args.catalog, args.istat_comune, args.residency
         )
-        offers = [*offers, *catalog_offers]
-        log.info(
-            "Loaded %d offers from catalogue %s", len(catalog_offers), args.catalog
-        )
+        if args.include_custom:
+            offers = [
+                *_with_standard_household_dispatching(offers, args.catalog),
+                *catalog_offers,
+            ]
+            log.info(
+                "Loaded %d offers from catalogue %s (plus %d custom offers, "
+                "priced with the standard household dispatching)",
+                len(catalog_offers),
+                args.catalog,
+                len(offers) - len(catalog_offers),
+            )
+        else:
+            offers = catalog_offers
+            log.info(
+                "Loaded %d offers from catalogue %s (custom offers excluded; "
+                "use --include-custom to add them)",
+                len(catalog_offers),
+                args.catalog,
+            )
 
     comparison = compare(
         offers=offers,
@@ -344,6 +417,7 @@ def _run_catalog_build(args: argparse.Namespace) -> int:
         params_e_path=args.params_e,
         out_dir=args.out,
         snapshot_date=snapshot_date,
+        operators_path=args.operators,
     )
     log.info(
         "Built %s: %d offers included, %d excluded",
@@ -370,6 +444,13 @@ def _run_catalog_fetch(args: argparse.Namespace) -> int:
     fetch_parametri_ml(target, out_dir / "PO_Parametri_Mercato_Libero_E.csv")
     fetch_parametri_e(target, out_dir / "PO_Parametri_E.csv")
     fetch_indices(out_dir / "indices.csv")
+    try:
+        fetch_operators(out_dir / "operators.zip")
+    except FetchError as exc:
+        # Soft failure: the operator list is optional (--operators on
+        # `catalog build`); .cicd/catalog.sh falls back to the previous
+        # snapshot's cached export, then to no operators at all.
+        log.warning("Could not fetch the ARERA operators export: %s", exc)
     log.info(
         "Fetched PLACET (effective %s) and mercato libero (effective %s) into %s",
         placet_result.effective_date,

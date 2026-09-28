@@ -112,6 +112,18 @@ class CatalogStore:
             values={date.fromisoformat(r["month"]): r["value"] for r in rows}
         )
 
+    def parameters(self, source: str) -> dict[str, float]:
+        """``nome_parametro -> valore`` for one parameters source
+        (``"placet"`` or ``"mlibero"``), e.g. to price custom offers with
+        the standard household dispatching (``cdispd``/``dispbt_d``, see
+        ``bestbill.cli --include-custom``).
+        """
+        rows = self._conn.execute(
+            "SELECT nome_parametro, valore FROM parameters WHERE source = ?",
+            (source,),
+        ).fetchall()
+        return {r["nome_parametro"]: r["valore"] for r in rows}
+
     def suppliers(self) -> Sequence[str]:
         rows = self._conn.execute(
             "SELECT DISTINCT supplier FROM offers ORDER BY supplier"
