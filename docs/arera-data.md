@@ -44,7 +44,7 @@ PROVENANCE.md). The catalogue pipeline never republishes the raw
 zip/xlsx either: `bestbill.catalog.build` writes the parsed rows to a
 minimised `retailers.csv` (`partita_iva,ragione_sociale,sito_web`, UTF-8,
 next to `catalog.sqlite`), which is what `.cicd/catalog.sh`/
-`.github/workflows/catalog.yml` publish and cache for the next day's
+`.cicd/publish-catalog.sh` publish and cache for the next run's
 fallback (`bestbill.arera.operators.write_operators_csv`/
 `parse_operators_csv`). `PARTITA IVA` is zero-padded to 11 digits (openpyxl can
 hand back a bare number for a numeric-looking VAT); names may have

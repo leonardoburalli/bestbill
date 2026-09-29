@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Daily data pipeline: fetch ARERA source files -> build catalog.sqlite ->
+# Data pipeline: fetch ARERA source files -> build catalog.sqlite ->
 # validate. Set PREVIOUS_MANIFEST to a manifest.json path to enable the
 # count-change gate against the last published snapshot. Set
 # PREVIOUS_RETAILERS to a cached, minimised retailers.csv
