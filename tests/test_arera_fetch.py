@@ -175,3 +175,24 @@ def test_fetch_operators_raises_when_link_not_found(tmp_path):
 
     with pytest.raises(FetchError):
         fetch_operators(tmp_path / "operators.zip", opener=opener)
+
+
+def test_ssl_context_verifies_but_is_not_x509_strict():
+    """ARERA's chain lacks an Authority Key Identifier; Python 3.13's strict
+    mode rejects it, so we keep verification but drop VERIFY_X509_STRICT."""
+    import ssl
+
+    from bestbill.arera.fetch import _ssl_context
+
+    context = _ssl_context()
+    assert context.verify_mode == ssl.CERT_REQUIRED
+    assert context.check_hostname
+    assert not context.verify_flags & ssl.VERIFY_X509_STRICT
+
+
+@pytest.mark.slow
+def test_live_download_from_portale_offerte():
+    """Network check against the real portal (run with `pytest -m slow`)."""
+    from bestbill.arera.fetch import INDICES_URL, _download
+
+    assert _download(INDICES_URL).startswith(b"AnnoMese")
