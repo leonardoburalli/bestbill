@@ -54,8 +54,9 @@ on this site implies their endorsement. The code itself (everything in
 
 ## What we transform
 
-Every day, `bestbill catalog build` (see `.github/workflows/catalog.yml`,
-cron `00:00 UTC`):
+Each time the catalogue is published, `bestbill catalog build` runs
+(manually from a local machine via `make catalog-publish`, because ARERA's
+Portale Offerte returns HTTP 403 to GitHub Actions/cloud IPs):
 
 1. Downloads the day's PLACET CSV, mercato libero XML, PUN indices CSV, the
    two dispatching parameters CSV files (falling back to the previous

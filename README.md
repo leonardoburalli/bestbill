@@ -100,13 +100,12 @@ make lint      # ruff, ruff format --check, mypy, shellcheck
 make check     # test + lint
 make smoke     # end-to-end CLI run on the synthetic sample + fixture catalogue
 make catalog   # fetch + build + validate today's ARERA catalogue (network)
+make catalog-publish  # build and publish the catalogue (see below)
 ```
 
 CI (`.github/workflows/ci.yml`) runs install/test/lint/smoke on every push and
 pull request, mirroring the `epochlater` project's setup.
-`.github/workflows/catalog.yml` runs the daily data pipeline (cron
-`00:00 UTC` + manual dispatch) and publishes `catalog.sqlite` +
-`manifest.json` to the rolling `catalog-latest` GitHub Release.
+The catalogue is not built in CI; see "Updating the catalogue" below.
 
 ## The backtest assumption
 
@@ -149,7 +148,7 @@ price are **excluded and counted**, never silently mispriced.
 `bestbill.catalog.build` writes a validated, read-only `catalog.sqlite` +
 `manifest.json` snapshot (schema checks, minimum offer/PUN counts, a
 ±30% day-to-day count gate, and a pricing-sanity check against the ARERA
-reference customer). `.github/workflows/catalog.yml` runs this daily and
+reference customer). `make catalog-publish` runs this and
 publishes both files (plus the operators export, cached for the next run's
 fallback) to the rolling `catalog-latest` GitHub Release; a failed
 validation keeps the previous snapshot serving. Because it combines CC BY
@@ -157,6 +156,24 @@ validation keeps the previous snapshot serving. Because it combines CC BY
 published catalogue as a whole is **CC BY-SA 4.0** — see `PROVENANCE.md`
 for the full licence/attribution text and the manifest's `licence`/
 `sources` fields.
+
+## Aggiornare il catalogo / Updating the catalogue
+
+ARERA's Portale Offerte blocks downloads from GitHub's servers (HTTP 403), so
+no scheduled workflow can fetch it. The catalogue is built and published
+**manually, from a local machine**, with one command:
+
+```bash
+make catalog-publish                  # fetch, build, validate, publish
+.cicd/publish-catalog.sh --dry-run    # everything except the release upload
+```
+
+Prerequisites: `uv` and the GitHub CLI authenticated with `gh auth login`
+(`jq` is used for the release notes). The repo is detected via `gh repo view`
+(override with `BESTBILL_REPO=owner/name`). The script uploads only
+`catalog.sqlite`, `manifest.json` and `retailers.csv` to the `catalog-latest`
+release, never the raw ARERA files. The app shows the catalogue date, so
+users can see how fresh the data is.
 
 ## Data & privacy
 

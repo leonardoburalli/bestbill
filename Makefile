@@ -1,4 +1,4 @@
-.PHONY: install test lint check smoke catalog
+.PHONY: install test lint check smoke catalog catalog-publish
 
 install:
 	.cicd/install.sh
@@ -16,3 +16,6 @@ smoke:
 
 catalog:
 	.cicd/catalog.sh
+
+catalog-publish:
+	.cicd/publish-catalog.sh
