@@ -82,9 +82,6 @@ jobs:
           INCLUDED=$(jq -r '.counts.included' build/catalog/manifest.json)
           EXCLUDED=$(jq -r '.counts.excluded' build/catalog/manifest.json)
           ATTRIBUTION=$(jq -r '.attribution' build/catalog/manifest.json)
-          gh release edit catalog-latest \
-            --repo "${REPO}" \
-            --notes "Snapshot date: ${SNAPSHOT_DATE}
-Offers included: ${INCLUDED} — excluded: ${EXCLUDED}
-
-${ATTRIBUTION}"
+          NOTES=$(printf 'Snapshot date: %s\nOffers included: %s, excluded: %s\n\n%s\n' \
+            "${SNAPSHOT_DATE}" "${INCLUDED}" "${EXCLUDED}" "${ATTRIBUTION}")
+          gh release edit catalog-latest --repo "${REPO}" --notes "${NOTES}"
