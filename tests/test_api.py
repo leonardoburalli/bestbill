@@ -45,6 +45,12 @@ def test_health_ok(client):
     assert body["catalog_age_days"] >= 0
 
 
+def test_health_supports_head(client):
+    response = client.head("/api/health")
+    assert response.status_code == 200
+    assert response.content == b""
+
+
 def test_health_without_catalog(empty_client):
     body = empty_client.get("/api/health").json()
     assert body == {

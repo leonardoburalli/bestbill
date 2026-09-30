@@ -12,7 +12,16 @@ from importlib import resources
 from typing import Annotated, Any
 
 import openpyxl
-from fastapi import APIRouter, Depends, File, HTTPException, Query, Request, UploadFile
+from fastapi import (
+    APIRouter,
+    Depends,
+    File,
+    HTTPException,
+    Query,
+    Request,
+    Response,
+    UploadFile,
+)
 from pydantic import ValidationError
 
 from bestbill.api.catalog_source import CatalogProvider, CatalogSnapshot
@@ -84,6 +93,12 @@ def health(provider: Annotated[CatalogProvider, Depends(get_provider)]) -> Healt
         snapshot_date=snap.snapshot_date if snap else None,
         catalog_age_days=snap.age_days() if snap else None,
     )
+
+
+@router.head("/health", include_in_schema=False)
+def health_head() -> Response:
+    """Liveness for uptime checkers and platforms that probe with HEAD."""
+    return Response(status_code=200)
 
 
 @router.get("/catalog/meta", responses=NOT_LOADED_RESPONSES)
