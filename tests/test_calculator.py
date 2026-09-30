@@ -340,3 +340,74 @@ def test_break_even_pun_none_when_total_kwh_is_zero():
         committed_power_kw=3.0,
     )
     assert (break_even, status) == (None, None)
+
+
+def _f123_offer(price_type: str = "fixed", band_structure: str = "f1f2f3"):
+    from bestbill.core.models import Offer
+
+    bands = ["F1", "F2", "F3"] if band_structure == "f1f2f3" else ["F1", "F23"]
+    vals = dict(zip(bands, [0.20, 0.10, 0.05][: len(bands)], strict=False))
+    if band_structure == "f1f23":
+        vals = {"F1": 0.20, "F23": 0.05}
+    zero = dict.fromkeys(bands, 0.0)
+    return Offer(
+        id="x",
+        supplier="Alfa",
+        name="Alfa",
+        source="custom",
+        price_type=price_type,
+        band_structure=band_structure,
+        energy_price_eur_kwh=vals if price_type == "fixed" else {},
+        spread_eur_kwh=vals if price_type == "variable" else zero,
+        fixed_fee_eur_year=100.0,
+        per_kwh_extras_eur=0.01,
+        dispatching_eur_kwh=0.02,
+    )
+
+
+def test_energy_price_fixed_mono_is_listed_price():
+    profile = make_profile([100.0] * 12)
+    offer = fixed_offer(price=0.16, fee=120.0)
+    r = compare([offer], profile, make_pun([0.10] * 12)).results[0]
+    assert r.energy_price_eur_kwh == pytest.approx(0.16)
+    assert r.energy_price_kind == "fixed"
+    assert r.eur_per_kwh_effective > r.energy_price_eur_kwh
+
+
+def test_energy_price_fixed_user_bands_weighted():
+    bands_list = [{"F1": 40.0, "F2": 30.0, "F3": 30.0}] * 12
+    profile = make_profile([100.0] * 12, bands_list=bands_list)
+    r = compare([_f123_offer()], profile, make_pun([0.10] * 12)).results[0]
+    assert r.energy_price_eur_kwh == pytest.approx(0.4 * 0.20 + 0.3 * 0.10 + 0.3 * 0.05)
+
+
+def test_energy_price_fixed_standard_split_matches_breakdown():
+    profile = make_profile([100.0] * 12)
+    r = compare([_f123_offer()], profile, make_pun([0.10] * 12)).results[0]
+    assert r.energy_price_eur_kwh == pytest.approx(r.breakdown.energy / 1200)
+    assert r.energy_price_kind == "fixed"
+
+
+def test_energy_price_fixed_f1f23_user_bands():
+    bands_list = [{"F1": 40.0, "F2": 30.0, "F3": 30.0}] * 12
+    profile = make_profile([100.0] * 12, bands_list=bands_list)
+    offer = _f123_offer(band_structure="f1f23")
+    r = compare([offer], profile, make_pun([0.10] * 12)).results[0]
+    assert r.energy_price_eur_kwh == pytest.approx(0.4 * 0.20 + 0.6 * 0.05)
+
+
+def test_energy_price_variable_mono_is_spread_only():
+    profile = make_profile([100.0] * 12)
+    offer = variable_offer(spread=0.02)
+    r = compare([offer], profile, make_pun([0.10] * 12)).results[0]
+    assert r.energy_price_eur_kwh == pytest.approx(0.02)
+    assert r.energy_price_kind == "pun_spread"
+
+
+def test_energy_price_variable_banded_spread_weighted():
+    bands_list = [{"F1": 40.0, "F2": 30.0, "F3": 30.0}] * 12
+    profile = make_profile([100.0] * 12, bands_list=bands_list)
+    offer = _f123_offer(price_type="variable")
+    r = compare([offer], profile, make_pun([0.10] * 12)).results[0]
+    assert r.energy_price_eur_kwh == pytest.approx(0.4 * 0.20 + 0.3 * 0.10 + 0.3 * 0.05)
+    assert r.energy_price_kind == "pun_spread"

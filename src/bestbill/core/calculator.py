@@ -119,25 +119,23 @@ def _scenario_statement(
         "Non include costi di rete, oneri di sistema e imposte: sono uguali "
         "per ogni fornitore e non dipendono dalla scelta dell'offerta."
     )
+    lead = (
+        "Spesa ipotetica nei prossimi 12 mesi, se consumassi come in "
+        f"{period} e, per le offerte a prezzo variabile, il PUN"
+    )
+    tail = f"È una simulazione, non una previsione. {base}"
     if isinstance(scenario, Historical):
-        return (
-            "Stima nell'ipotesi che nei prossimi 12 mesi i tuoi consumi e il PUN "
-            f"siano identici a quelli di {period}. Non è una previsione. {base}"
-        )
+        return f"{lead} ripetesse l'andamento di quel periodo. {tail}"
     if isinstance(scenario, Scaled):
         pct = round((scenario.factor - 1) * 100)
         sign = "+" if pct >= 0 else ""
         return (
-            "Stima nell'ipotesi che nei prossimi 12 mesi i tuoi consumi siano "
-            f"identici a quelli di {period}, con un PUN storico modificato "
-            f"({sign}{pct}%). Non è una previsione. {base}"
+            f"{lead} ripetesse l'andamento di quel periodo con una variazione "
+            f"del {sign}{pct}%. {tail}"
         )
     if isinstance(scenario, Flat):
-        return (
-            "Stima nell'ipotesi che nei prossimi 12 mesi i tuoi consumi siano "
-            f"identici a quelli di {period}, con un PUN costante di "
-            f"{scenario.value:.3f} €/kWh. Non è una previsione. {base}"
-        )
+        value = f"{scenario.value:.3f}".replace(".", ",")
+        return f"{lead} restasse costante a {value} €/kWh. {tail}"
     raise ValueError(f"unsupported scenario: {scenario!r}")
 
 
@@ -270,6 +268,34 @@ def _energy_cost(
             )
             energy_cost += spread_value * spread_multiplier
     return energy_cost
+
+
+def _energy_price_eur_kwh(
+    offer: Offer, monthly_band_kwh: list[dict[str, float]], total_kwh: float
+) -> float:
+    """Advertised unit energy price: consumption-weighted listed price (fixed
+    offers) or spread over PUN (variable offers), using the same band split
+    and consumption tiers as :func:`_energy_cost`, but BEFORE losses,
+    discounts, fixed fees, per-kWh extras, dispatching and power fees. For
+    variable offers the PUN index is not included.
+    """
+    if total_kwh <= 0:
+        return 0.0
+    table = (
+        offer.energy_price_eur_kwh
+        if offer.price_type is PriceType.FIXED
+        else offer.spread_eur_kwh
+    )
+    tiers = (
+        offer.energy_price_tiers_eur_kwh
+        if offer.price_type is PriceType.FIXED
+        else offer.spread_tiers_eur_kwh
+    )
+    amount = sum(
+        policy.band_value_eur(table[band], tiers.get(band), kwh)
+        for band, kwh in _annual_band_kwh(monthly_band_kwh).items()
+    )
+    return amount / total_kwh
 
 
 def _offer_breakdown(
@@ -536,6 +562,12 @@ def compare(
                 cost_eur=cost,
                 delta_vs_best_eur=cost - best_cost,
                 eur_per_kwh_effective=cost / total_kwh if total_kwh > 0 else 0.0,
+                energy_price_eur_kwh=_energy_price_eur_kwh(
+                    offer, offer_band_kwh[offer.id], total_kwh
+                ),
+                energy_price_kind=(
+                    "fixed" if offer.price_type is PriceType.FIXED else "pun_spread"
+                ),
                 rank=rank,
                 break_even_pun_eur_kwh=break_even,
                 break_even_status=break_even_status,

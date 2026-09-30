@@ -27,14 +27,6 @@ jobs:
         with:
           enable-cache: true
 
-      - name: Set up Node
-        uses: actions/setup-node@v4
-        if: hashFiles('frontend/package-lock.json') != ''
-        with:
-          node-version: "22"
-          cache: npm
-          cache-dependency-path: frontend/package-lock.json
-
       - name: Install
         run: .cicd/install.sh
 
@@ -46,3 +38,17 @@ jobs:
 
       - name: Smoke test
         run: .cicd/smoke.sh
+
+  frontend:
+    name: Frontend (bun)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - name: Check out the repository
+        uses: actions/checkout@v7
+
+      - name: Set up bun
+        uses: oven-sh/setup-bun@v2
+
+      - name: Typecheck, test, build
+        run: .cicd/frontend.sh

@@ -1012,6 +1012,19 @@
             "title": "Dispatching Is Standard Estimate",
             "type": "boolean"
           },
+          "energy_price_eur_kwh": {
+            "description": "Advertised unit energy price (EUR/kWh, ex VAT): weighted listed price (fixed) or spread over PUN (pun_spread); excludes discounts, fixed fees, extras, dispatching, power fee and losses.",
+            "title": "Energy Price Eur Kwh",
+            "type": "number"
+          },
+          "energy_price_kind": {
+            "enum": [
+              "fixed",
+              "pun_spread"
+            ],
+            "title": "Energy Price Kind",
+            "type": "string"
+          },
           "eur_per_kwh_effective": {
             "title": "Eur Per Kwh Effective",
             "type": "number"
@@ -1115,6 +1128,8 @@
           "cost_eur",
           "delta_vs_best_eur",
           "eur_per_kwh_effective",
+          "energy_price_eur_kwh",
+          "energy_price_kind",
           "breakdown",
           "break_even_pun_eur_kwh",
           "break_even_status",

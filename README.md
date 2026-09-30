@@ -130,8 +130,9 @@ the fixed-vs-variable ranking can change. Every `Comparison` carries an
 `assumptions` block (period, PUN months used, substituted months, band-split
 source, scenario) and a human-readable Italian statement, e.g.:
 
-> *"Stima nell'ipotesi che nei prossimi 12 mesi i tuoi consumi e il PUN siano
-> identici a quelli di set 2024 – ago 2025. Non è una previsione."*
+> *"Spesa ipotetica nei prossimi 12 mesi, se consumassi come in set 2024 – ago 2025
+> e, per le offerte a prezzo variabile, il PUN ripetesse l'andamento di quel
+> periodo. È una simulazione, non una previsione."*
 
 Variable offers also carry a **break-even PUN**: the average PUN above which
 the cheapest fixed offer becomes cheaper instead.
