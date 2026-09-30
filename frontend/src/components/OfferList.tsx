@@ -46,11 +46,11 @@ function OfferTable({ items, open, toggle, roomy }: ListProps & { roomy: boolean
             <th scope="col" className="w-14 px-4 py-3 font-semibold">Pos.</th>
             <th scope="col" className="px-3 py-3 font-semibold">Offerta</th>
             <th scope="col" className="px-3 py-3 text-right font-semibold">Costo stimato</th>
+            {roomy && <th scope="col" className="px-3 py-3 text-right font-semibold">Rispetto alla migliore</th>}
+            {roomy && <th scope="col" className="px-3 py-3 text-right font-semibold">€/kWh</th>}
             <th scope="col" className="px-3 py-3 text-right font-semibold">
               <abbr title="Corrispettivo commercializzazione e vendita: quota fissa annuale, già inclusa nel costo" className="no-underline">CCV</abbr> / anno
             </th>
-            {roomy && <th scope="col" className="px-3 py-3 text-right font-semibold">Rispetto alla migliore</th>}
-            {roomy && <th scope="col" className="px-3 py-3 text-right font-semibold">€/kWh</th>}
             <th scope="col" className="px-3 py-3 text-right font-semibold"><span className="sr-only">Dettagli e link</span></th>
           </tr>
         </thead>
@@ -79,9 +79,9 @@ function OfferTable({ items, open, toggle, roomy }: ListProps & { roomy: boolean
                       </>
                     )}
                   </td>
-                  <td className="whitespace-nowrap px-3 py-4 text-right text-sm font-medium tabular">{formatEur(it.breakdown.fixed_fees)}</td>
                   {roomy && <td className="px-3 py-4 text-right text-sm tabular text-ink-soft">{deltaText(it.delta_vs_best_eur)}</td>}
                   {roomy && <td className="whitespace-nowrap px-3 py-4 text-right text-sm tabular">{formatEurPerKwh(it.eur_per_kwh_effective)}</td>}
+                  <td className="whitespace-nowrap px-3 py-4 text-right text-sm font-medium tabular">{formatEur(it.breakdown.fixed_fees)}</td>
                   <td className="px-3 py-4 text-right">
                     <div className="flex flex-col items-end gap-2">
                       <button
@@ -140,16 +140,16 @@ function OfferCards({ items, open, toggle }: ListProps) {
             <div className="mt-2.5"><OfferBadges item={it} /></div>
             <dl className="mt-3 grid grid-cols-2 gap-3 border-t border-dashed border-line pt-3 text-sm">
               <div>
+                <dt className="text-xs text-ink-soft">Costo effettivo</dt>
+                <dd className="tabular font-medium">{formatEurPerKwh(it.eur_per_kwh_effective)}</dd>
+              </div>
+              <div>
                 <dt className="text-xs text-ink-soft">CCV (quota fissa di vendita)</dt>
                 <dd className="tabular font-medium">{formatEurPerYear(it.breakdown.fixed_fees)}</dd>
               </div>
               <div>
                 <dt className="text-xs text-ink-soft">Rispetto alla migliore</dt>
                 <dd className="tabular font-medium">{deltaText(it.delta_vs_best_eur)}</dd>
-              </div>
-              <div>
-                <dt className="text-xs text-ink-soft">Costo effettivo</dt>
-                <dd className="tabular font-medium">{formatEurPerKwh(it.eur_per_kwh_effective)}</dd>
               </div>
             </dl>
             <BreakEvenText item={it} />
