@@ -8,7 +8,6 @@ No network calls happen at import time or in the test suite (mocked).
 
 from __future__ import annotations
 
-import ssl
 import time
 import urllib.error
 import urllib.request
@@ -65,18 +64,6 @@ def parametri_e_url(d: date) -> str:
     return f"{BASE_URL}/parametri/{_month_folder(d)}/PO_Parametri_E_{d:%Y%m%d}.csv"
 
 
-def _ssl_context() -> ssl.SSLContext:
-    """Default verifying context without Python 3.13's VERIFY_X509_STRICT.
-
-    The ARERA/Portale Offerte certificate chain lacks an Authority Key
-    Identifier, which strict mode rejects. Chain and hostname verification
-    stay on; only the extra RFC 5280 strictness checks are relaxed.
-    """
-    context = ssl.create_default_context()
-    context.verify_flags &= ~ssl.VERIFY_X509_STRICT
-    return context
-
-
 def _download(
     url: str,
     *,
@@ -87,9 +74,7 @@ def _download(
         with opener.open(url, timeout=timeout) as response:
             return response.read()  # type: ignore[no-any-return]
     request = urllib.request.Request(url, headers={"User-Agent": USER_AGENT})
-    with urllib.request.urlopen(
-        request, timeout=timeout, context=_ssl_context()
-    ) as response:
+    with urllib.request.urlopen(request, timeout=timeout) as response:
         return response.read()  # type: ignore[no-any-return]
 
 
