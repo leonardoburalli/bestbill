@@ -161,7 +161,15 @@ def test_sample(client):
     body = client.get("/api/sample").json()
     assert body["location"] == "Esempio"
     assert len(body["months"]) == 12
-    assert all(m["kwh"] > 0 and m["pun"] is not None for m in body["months"])
+    assert all(m["kwh"] > 0 and set(m) == {"month", "kwh"} for m in body["months"])
+
+
+def test_sample_round_trips_into_compare(client):
+    """The UI sends /api/sample (or /api/parse) months straight to /api/compare."""
+    months = client.get("/api/sample").json()["months"]
+    r = client.post("/api/compare", json={"consumption": months, "top_n": 3})
+    assert r.status_code == 200, r.text
+    assert r.json()["results"]
 
 
 # -- parse -------------------------------------------------------------------
@@ -176,7 +184,7 @@ def test_parse_ok(client):
     assert body["skipped"] == []
     prof = body["profiles"][0]
     assert prof["location"] == "Milano"
-    assert prof["months"][0] == {"month": "2025-01", "kwh": 300.0, "pun": 0.11}
+    assert prof["months"][0] == {"month": "2025-01", "kwh": 300.0}
     assert len(prof["months"]) == 12
 
 

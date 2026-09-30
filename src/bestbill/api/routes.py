@@ -187,13 +187,12 @@ def sample() -> SampleHousehold:
     with resources.as_file(
         resources.files("bestbill").joinpath("data/sample.xlsx")
     ) as path:
-        profile, actual, _ = read_location_data(path, SAMPLE_LOCATION)
+        profile, _, _ = read_location_data(path, SAMPLE_LOCATION)
     return SampleHousehold(
         location=SAMPLE_LOCATION,
         description="Famiglia di esempio con dati sintetici (non reali).",
         months=[
-            SampleMonth(month=_month_str(m.month), kwh=m.kwh, pun=actual.get(m.month))
-            for m in profile.months
+            SampleMonth(month=_month_str(m.month), kwh=m.kwh) for m in profile.months
         ],
     )
 
@@ -249,7 +248,7 @@ def parse(
     skipped: list[str] = []
     for location in locations:
         try:
-            profile, actual, _ = read_location_data(io.BytesIO(content), location)
+            profile, _, _ = read_location_data(io.BytesIO(content), location)
         except (ExcelFormatError, ValidationError):
             skipped.append(location)
             continue
@@ -257,9 +256,7 @@ def parse(
             ParsedProfile(
                 location=location,
                 months=[
-                    SampleMonth(
-                        month=_month_str(m.month), kwh=m.kwh, pun=actual.get(m.month)
-                    )
+                    SampleMonth(month=_month_str(m.month), kwh=m.kwh)
                     for m in profile.months
                 ],
             )

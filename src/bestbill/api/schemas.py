@@ -102,9 +102,14 @@ class ComuneOut(BaseModel):
 
 
 class SampleMonth(BaseModel):
+    """One month of consumption, in the same shape `/api/compare` accepts.
+
+    No PUN: the API always prices variable offers with ARERA's monthly PUN
+    from the catalogue, never a user-supplied one.
+    """
+
     month: MonthStr
     kwh: float
-    pun: float | None = None
 
 
 class SampleHousehold(BaseModel):

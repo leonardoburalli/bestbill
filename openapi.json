@@ -1152,6 +1152,7 @@
         "type": "object"
       },
       "SampleMonth": {
+        "description": "One month of consumption, in the same shape `/api/compare` accepts.\n\nNo PUN: the API always prices variable offers with ARERA's monthly PUN\nfrom the catalogue, never a user-supplied one.",
         "properties": {
           "kwh": {
             "title": "Kwh",
@@ -1164,17 +1165,6 @@
             "pattern": "^\\d{4}-(0[1-9]|1[0-2])$",
             "title": "Month",
             "type": "string"
-          },
-          "pun": {
-            "anyOf": [
-              {
-                "type": "number"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Pun"
           }
         },
         "required": [
