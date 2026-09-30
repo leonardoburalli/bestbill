@@ -21,6 +21,17 @@ publishes the electricity-retailer list on its own site
 | PLACET parameters (CSV) | Dispatching parameter values (`dispbt_d`, `cdispd`) used to price PLACET offers | `bestbill.arera.parameters` | CC BY 4.0 |
 | ARERA "Ricerca operatori" export (XLSX in a ZIP) | Electricity-retailer name + VAT + website, used to name mercato libero offers | `bestbill.arera.operators` | CC BY-SA 4.0 |
 
+| ISTAT "Elenco comuni italiani" (CSV) | Comune → provincia → regione codes and names, used to match a user's comune against area-restricted offers (`src/bestbill/data/comuni.csv`, built by `scripts/make_comuni.py`) | manually, `scripts/make_comuni.py` | CC BY 4.0 (ISTAT legal notes, istat.it/note-legali) |
+
+The comuni table comes from ISTAT, "Elenco dei comuni italiani"
+(https://www.istat.it/storage/codici-unita-amministrative/Elenco-comuni-italiani.csv),
+published under Creative Commons Attribution 4.0. Attribution: *Fonte:
+elaborazione su dati ISTAT.* Only code, name, provincia sigla/code and
+regione code/name are kept. The provincia code is ISTAT's "Codice Provincia
+(Storico)", which equals the first three digits of the comune code and is
+the value ARERA's `PROVINCIA` zone uses; ARERA's `REGIONE` uses the ISTAT
+two-digit region code.
+
 See `docs/arera-data.md` for exact URLs, the publication schedule, the ARERA
 code tables used by the importer, and observed findings from the real data.
 

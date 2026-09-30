@@ -19,6 +19,7 @@ __all__ = [
     "CustomerType",
     "Residency",
     "GeoLevel",
+    "ComuneRef",
     "GeoRestriction",
     "LossesMode",
     "DiscountValidity",
@@ -147,18 +148,25 @@ class GeoLevel(StrEnum):
     COMUNE = "comune"
 
 
+class ComuneRef(BaseModel):
+    """A comune with its administrative hierarchy (see ``bestbill.geo``):
+    6-digit ISTAT comune code, 3-digit provincia code (the first 3 digits
+    of the comune code, as used by ARERA's ``PROVINCIA``) and 2-digit
+    regione code (ARERA's ``REGIONE``). ``regione`` is ``None`` when the
+    comune isn't in the ISTAT table (regione restrictions then can't match).
+    """
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    codice: str
+    provincia: str
+    regione: str | None = None
+
+
 class GeoRestriction(BaseModel):
     """An offer's geographic restriction: national if all sets are empty,
-    otherwise the offer is only available where at least one code matches.
-
-    Matching a user's ``istat_comune`` (6-digit ISTAT code) against
-    ``province`` uses the first 3 digits of the comune code as the
-    provincia code, which holds for the classic ISTAT numbering
-    (*inferred*, not verified against an authoritative comune->provincia
-    table). ``regione`` restrictions cannot be verified from the comune
-    code alone (no arithmetic derivation), so a comune that only matches a
-    regione-restricted offer is treated as **not** eligible rather than
-    risk showing an unavailable offer (documented limitation).
+    otherwise the offer is only available where at least one code matches
+    the user's comune, its provincia or its regione.
     """
 
     model_config = ConfigDict(frozen=True, extra="forbid")
@@ -167,12 +175,12 @@ class GeoRestriction(BaseModel):
     province: frozenset[str] = frozenset()
     comuni: frozenset[str] = frozenset()
 
-    def matches(self, istat_comune: str) -> bool:
-        if istat_comune in self.comuni:
-            return True
-        if len(istat_comune) >= 3 and istat_comune[:3] in self.province:
-            return True
-        return False
+    def matches(self, comune: ComuneRef) -> bool:
+        return (
+            comune.codice in self.comuni
+            or comune.provincia in self.province
+            or (comune.regione is not None and comune.regione in self.regioni)
+        )
 
 
 class LossesMode(StrEnum):

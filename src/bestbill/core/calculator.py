@@ -11,6 +11,7 @@ from bestbill.core.models import (
     Assumptions,
     BreakEvenStatus,
     Comparison,
+    ComuneRef,
     ConsumptionProfile,
     CostBreakdown,
     CustomerType,
@@ -26,6 +27,7 @@ from bestbill.core.models import (
     Scaled,
     Scenario,
 )
+from bestbill.geo import resolve_comune
 
 _ITALIAN_MONTHS = {
     1: "gen",
@@ -144,7 +146,7 @@ def _is_eligible(
     total_kwh: float,
     today: date,
     residency: Literal["resident", "non_resident"],
-    istat_comune: str | None,
+    comune: ComuneRef | None,
 ) -> str | None:
     """Return a reason string if the offer must be excluded, else None."""
     if offer.customer is not CustomerType.DOMESTIC:
@@ -154,9 +156,9 @@ def _is_eligible(
     if offer.residency is Residency.NON_RESIDENTS and residency != "non_resident":
         return "offerta riservata ai non residenti"
     if offer.geo is not None:
-        if istat_comune is None:
+        if comune is None:
             return "zona non specificata"
-        if not offer.geo.matches(istat_comune):
+        if not offer.geo.matches(comune):
             return "offerta non disponibile nel comune indicato"
     if offer.valid_from is not None and today < offer.valid_from:
         return "non ancora attivabile (valid_from nel futuro)"
@@ -445,7 +447,8 @@ def compare(
 
     ``residency``/``istat_comune`` filter offers restricted to residents or
     to a geographic zone (ARERA ZoneOfferta); ``istat_comune`` is the
-    user's 6-digit ISTAT comune code -- geo-restricted offers are excluded
+    user's 6-digit ISTAT comune code (resolved to its provincia and
+    regione via ``bestbill.geo``) -- geo-restricted offers are excluded
     when it isn't given. ``committed_power_kw`` prices offers with a
     €/kW/year power fee. See PLAN.md §5 for the backtest / perfect-foresight
     assumptions.
@@ -468,10 +471,12 @@ def compare(
         raw_pun_months, substituted_months = resolved
         pun_months_used = _apply_scenario(raw_pun_months, scenario)
 
+    comune = resolve_comune(istat_comune) if istat_comune is not None else None
+
     excluded: list[tuple[str, str]] = []
     eligible: list[Offer] = []
     for offer in offers:
-        reason = _is_eligible(offer, total_kwh, today, residency, istat_comune)
+        reason = _is_eligible(offer, total_kwh, today, residency, comune)
         if reason is not None:
             excluded.append((offer.id, reason))
             continue
