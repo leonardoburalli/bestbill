@@ -3,13 +3,19 @@
  * I numeri restano testo finché non vengono inviati: così si può scrivere "1.234,5"
  * senza che il campo si "corregga" da solo mentre si digita.
  */
-import { useCallback, useMemo, useState } from 'react'
+import { useCallback, useMemo, useRef, useState } from 'react'
 import type { FieldError } from '../api'
 import { POWER_MAX, parseItalianNumber, toRequestMonths, validateRows } from '../lib/consumption'
 import type { MonthRow } from '../lib/consumption'
-import { buildMonths, endFromStart, lastCompleteMonth, startFromEnd } from '../lib/months'
-import { applyImport, suggestEndMonth } from '../lib/portaleConsumi'
-import type { ImportedMonth, parsePortaleConsumiCsv } from '../lib/portaleConsumi'
+import { buildMonths, endFromStart, formatMonthLong, lastCompleteMonth, startFromEnd } from '../lib/months'
+import {
+  PortaleConsumiError,
+  applyImport,
+  mergePortaleFiles,
+  readPortaleFile,
+  suggestEndMonth,
+} from '../lib/portaleConsumi'
+import type { ImportedMonth, MergedImport, PortaleFile } from '../lib/portaleConsumi'
 import type { CompareFilters, CompareRequest, Comune, Residency, Scenario } from '../types'
 
 export type Cell = { kwh: string; f1: string; f2: string; f3: string }
@@ -37,17 +43,27 @@ const cellFromRow = (r: MonthRow): Cell => ({
   f3: numToText(r.f3),
 })
 
-/** Riepilogo dell'ultima importazione da Portale Consumi, mostrato sopra la tabella. */
+/** Un file scelto dall'utente: letto bene (`parsed`) oppure con il motivo per cui non si può usare (`error`). */
+export interface LoadedFile {
+  id: string
+  name: string
+  parsed: PortaleFile | null
+  error: string | null
+}
+
+/** Riepilogo dell'importazione da Portale Consumi (tutti i file insieme), mostrato sopra la tabella. */
 export interface ImportReport {
-  fileName: string
-  /** Mesi presenti nel file. */
+  files: MergedImport['files']
+  /** Mesi distinti presenti nei file, uniti. */
   totalMonths: number
   filled: number
-  /** Mesi (YYYY-MM) dei 12 scelti che non sono nel file. */
+  /** Mesi (YYYY-MM) dei 12 scelti che non sono nei file. */
   missing: string[]
   warnings: string[]
   first: string
   last: string
+  /** Anni di calendario per cui almeno un file ha dei mesi. */
+  years: number[]
 }
 
 export function initialForm(): FormState {
@@ -61,6 +77,9 @@ export function initialForm(): FormState {
     power: '3',
   }
 }
+
+/** "2025-09" → "set 2025" */
+export const monthAbbrYear = (ym: string) => `${formatMonthLong(ym).slice(0, 3)} ${ym.slice(0, 4)}`
 
 /** Numero → testo con virgola decimale, senza separatore delle migliaia. */
 export function numToText(n: number | null): string {
@@ -200,6 +219,12 @@ export function useConsumptionForm() {
   const [attempted, setAttempted] = useState(false)
   const [note, setNoteRaw] = useState<string | null>(null)
   const [report, setReport] = useState<ImportReport | null>(null)
+  const [portaleFiles, setPortaleFiles] = useState<LoadedFile[]>([])
+  const [portaleProblem, setPortaleProblem] = useState<string | null>(null)
+  // Copia sempre aggiornata dell'elenco: serve perché più letture di file possono finire in momenti diversi.
+  const filesRef = useRef<LoadedFile[]>([])
+  const hadImportRef = useRef(false)
+  const nextId = useRef(0)
 
   /** Un solo messaggio alla volta sopra la tabella. */
   const setNote = useCallback((n: string | null) => {
@@ -266,47 +291,117 @@ export function useConsumptionForm() {
         }),
       }))
       setServerErrors([])
+      filesRef.current = []
+      hadImportRef.current = false
+      setPortaleFiles([])
+      setPortaleProblem(null)
       setNote(why)
     },
     [setNote],
   )
 
-  /** Dopo un incolla: i valori sono a mano, non più quelli del file. */
+  /** Dopo un incolla: i valori sono a mano, non più quelli dei file. */
   const forgetImport = useCallback(() => {
     setForm((f) => ({ ...f, imported: null, stash: {} }))
     setReport(null)
+    setPortaleProblem(null)
+    hadImportRef.current = false
+    filesRef.current = []
+    setPortaleFiles([])
   }, [])
 
-  /** Importa dal file di Portale Consumi. Restituisce un messaggio se non c'è nulla di utilizzabile. */
-  const importPortale = useCallback(
-    (parsed: ReturnType<typeof parsePortaleConsumiCsv>, fileName: string): string | null => {
-      const end = suggestEndMonth(parsed.months)
-      if (!end) {
-        return 'Nel file ci sono solo mesi non ancora conclusi. Servono consumi di mesi già passati.'
+  /** Unisce i file letti bene, sceglie il periodo e riempie tabella, fasce e riepilogo. */
+  const recompute = useCallback((files: LoadedFile[]) => {
+    const good = files.flatMap((f) => (f.parsed ? [f.parsed] : []))
+    const clear = () => {
+      setForm((f) => ({ ...f, imported: null, stash: {} }))
+      setReport(null)
+      if (hadImportRef.current) {
+        setNoteRaw('Ho tolto i file importati. I valori restano nella tabella: controllali o cambiali.')
       }
-      const res = applyImport(parsed.months, end, parsed.hasBands)
-      setForm((f) => ({
-        ...f,
-        start: startFromEnd(end),
-        useBands: parsed.hasBands,
-        stash: {},
-        imported: parsed.months,
-        cells: res.rows.map((r) => (r.kwh !== null ? cellFromRow(r) : emptyCell())),
-      }))
-      setServerErrors([])
-      setNoteRaw(null)
-      setReport({
-        fileName,
-        totalMonths: parsed.months.length,
-        filled: res.filled,
-        missing: res.missing,
-        warnings: parsed.warnings,
-        first: parsed.months[0].month,
-        last: parsed.months[parsed.months.length - 1].month,
-      })
-      return null
+      hadImportRef.current = false
+    }
+    if (good.length === 0) {
+      setPortaleProblem(null)
+      clear()
+      return
+    }
+    const merged = mergePortaleFiles(good)
+    const end = suggestEndMonth(merged.months)
+    if (!end) {
+      setPortaleProblem('Nei file ci sono solo mesi non ancora conclusi. Servono consumi di mesi già passati.')
+      clear()
+      return
+    }
+    setPortaleProblem(null)
+    const res = applyImport(merged.months, end, merged.hasBands)
+    setForm((f) => ({
+      ...f,
+      start: startFromEnd(end),
+      useBands: merged.hasBands,
+      stash: {},
+      imported: merged.months,
+      cells: res.rows.map((r) => (r.kwh !== null ? cellFromRow(r) : emptyCell())),
+    }))
+    setServerErrors([])
+    setNoteRaw(null)
+    hadImportRef.current = true
+    setReport({
+      files: merged.files,
+      totalMonths: merged.months.length,
+      filled: res.filled,
+      missing: res.missing,
+      warnings: merged.warnings,
+      first: merged.months[0].month,
+      last: merged.months[merged.months.length - 1].month,
+      years: [...new Set(merged.months.map((m) => Number(m.month.slice(0, 4))))].sort((x, y) => x - y),
+    })
+  }, [])
+
+  const commitFiles = useCallback(
+    (next: LoadedFile[]) => {
+      filesRef.current = next
+      setPortaleFiles(next)
+      recompute(next)
     },
-    [],
+    [recompute],
+  )
+
+  /** Aggiunge uno o più file CSV di Portale Consumi a quelli già caricati (lo stesso file caricato di nuovo sostituisce il precedente). */
+  const addPortaleFiles = useCallback(
+    async (list: File[]) => {
+      if (list.length === 0) return
+      const read = await Promise.all(
+        list.map(async (file): Promise<Omit<LoadedFile, 'id'>> => {
+          try {
+            return { name: file.name, parsed: await readPortaleFile(file), error: null }
+          } catch (e) {
+            return {
+              name: file.name,
+              parsed: null,
+              error:
+                e instanceof PortaleConsumiError
+                  ? e.message
+                  : 'Non sono riuscito a leggere il file. Controlla che sia il CSV scaricato da Portale Consumi.',
+            }
+          }
+        }),
+      )
+      // A file replaces an earlier one only when it is the same export again
+      // (same name AND same months): two different years can both be called
+      // "Consumi.csv" if downloaded to different folders.
+      const span = (p: LoadedFile['parsed']) =>
+        p && p.months.length > 0 ? `${p.months[0].month}..${p.months[p.months.length - 1].month}` : ''
+      const incoming = new Set(read.map((r) => `${r.name}|${span(r.parsed)}`))
+      const kept = filesRef.current.filter((f) => !incoming.has(`${f.name}|${span(f.parsed)}`))
+      commitFiles([...kept, ...read.map((r) => ({ ...r, id: `pf-${nextId.current++}` }))])
+    },
+    [commitFiles],
+  )
+
+  const removePortaleFile = useCallback(
+    (id: string) => commitFiles(filesRef.current.filter((f) => f.id !== id)),
+    [commitFiles],
   )
 
   const check = useMemo(() => checkForm(form), [form])
@@ -319,7 +414,10 @@ export function useConsumptionForm() {
     setCells,
     setPeriod,
     applyRows,
-    importPortale,
+    addPortaleFiles,
+    removePortaleFile,
+    portaleFiles,
+    portaleProblem,
     forgetImport,
     report,
     check,

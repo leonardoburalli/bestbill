@@ -209,3 +209,87 @@ export function applyImport(
   }
   return { rows, filled, missing }
 }
+
+export type PortaleFile = { name: string; months: ImportedMonth[]; hasBands: boolean; warnings: string[] }
+export type MergedImport = {
+  months: ImportedMonth[]
+  hasBands: boolean
+  warnings: string[]
+  files: { name: string; first: string | null; last: string | null; count: number }[]
+}
+
+export async function readPortaleFile(file: File): Promise<PortaleFile> {
+  try {
+    const parsed = await readPortaleConsumiFile(file)
+    return { name: file.name, ...parsed }
+  } catch (e) {
+    if (e instanceof PortaleConsumiError) {
+      throw new PortaleConsumiError(`${file.name}: ${e.message}`)
+    }
+    throw e
+  }
+}
+
+const EPS = 0.01
+const close = (a: number | null, b: number | null) =>
+  a === null || b === null ? a === b : Math.abs(a - b) <= EPS
+const sameMonth = (a: ImportedMonth, b: ImportedMonth) =>
+  a.month === b.month && close(a.kwh, b.kwh) && close(a.f1, b.f1) && close(a.f2, b.f2) && close(a.f3, b.f3)
+const hasMonthBands = (m: ImportedMonth) => m.f1 !== null && m.f2 !== null && m.f3 !== null
+
+export function mergePortaleFiles(files: PortaleFile[]): MergedImport {
+  const warnings: string[] = []
+  const kept: PortaleFile[] = []
+  for (const f of files) {
+    const dup = kept.find(
+      (k) =>
+        k.name === f.name &&
+        k.months.length === f.months.length &&
+        k.months.every((m, i) => sameMonth(m, f.months[i])),
+    )
+    if (dup) {
+      warnings.push(`Il file “${f.name}” è stato caricato due volte: ignoro il duplicato.`)
+      continue
+    }
+    kept.push(f)
+    for (const w of f.warnings) warnings.push(`${f.name}: ${w}`)
+  }
+
+  const byMonth = new Map<string, { m: ImportedMonth; file: string }>()
+  for (const f of kept) {
+    for (const raw of f.months) {
+      const m: ImportedMonth = f.hasBands ? { ...raw } : { ...raw, f1: null, f2: null, f3: null }
+      const prev = byMonth.get(m.month)
+      if (!prev) {
+        byMonth.set(m.month, { m, file: f.name })
+        continue
+      }
+      if (sameMonth(prev.m, m)) continue
+      const winner = m.kwh > prev.m.kwh ? { m, file: f.name } : prev
+      warnings.push(
+        `Il mese ${m.month} è presente con valori diversi in “${prev.file}” e “${f.name}”: uso il valore più alto (${winner.m.kwh} kWh, da “${winner.file}”).`,
+      )
+      byMonth.set(m.month, winner)
+    }
+  }
+
+  const months = [...byMonth.values()].map((v) => v.m).sort((a, b) => a.month.localeCompare(b.month))
+  let hasBands = months.length > 0 && months.every(hasMonthBands)
+  if (!hasBands && months.some(hasMonthBands)) {
+    warnings.push('Alcuni mesi non hanno la ripartizione per fasce: userò solo i totali.')
+  }
+  if (!hasBands) for (const m of months) m.f1 = m.f2 = m.f3 = null
+  hasBands = hasBands && months.length > 0
+
+  return {
+    months,
+    hasBands,
+    warnings,
+    files: kept.map((f) => ({
+      name: f.name,
+      first: f.months.length ? f.months[0].month : null,
+      last: f.months.length ? f.months[f.months.length - 1].month : null,
+      count: f.months.length,
+    })),
+  }
+}

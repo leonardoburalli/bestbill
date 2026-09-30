@@ -1,4 +1,4 @@
-import { formatMonthLong } from '../lib/months'
+import { formatMonthLong, lastCompleteMonth } from '../lib/months'
 import { AlertIcon, CheckIcon } from './icons'
 import { btnSecondary } from './ui'
 import type { ImportReport as Report } from './formState'
@@ -17,7 +17,16 @@ export default function ImportReport({
   absent: string[]
   pending: string[]
 }) {
-  const { warnings, totalMonths, first, last } = report
+  const { warnings, totalMonths, first, last, files, years } = report
+  const source = files.length === 1 ? `«${files[0].name}»` : `${files.length} file`
+  const containers = files.length === 1 ? 'contiene' : 'contengono'
+  // Anni dei mesi ancora vuoti che nessun file copre: probabilmente manca il file di quell'anno.
+  const missingYears = [...new Set(pending.map((m) => Number(m.slice(0, 4))))]
+    .filter((y) => !years.includes(y))
+    .sort((a, b) => a - b)
+  // Periodo completo ma non aggiornato: i file non arrivano fino all'ultimo mese concluso.
+  const newestYear = Number(lastCompleteMonth().slice(0, 4))
+  const stale = last < lastCompleteMonth() && !years.includes(newestYear)
   const fromFile = 12 - absent.length
   const partial = absent.length > 0
   const filledByHand = absent.length - pending.length
@@ -43,10 +52,10 @@ export default function ImportReport({
           <p className="font-semibold">
             {partial
               ? `Il file copre ${fromFile} mesi su 12 del periodo scelto`
-              : `Importati tutti i 12 mesi da «${report.fileName}»`}
+              : `Importati tutti i 12 mesi da ${source}`}
           </p>
           <p className="text-ink-soft">
-            «{report.fileName}» contiene {totalMonths} {totalMonths === 1 ? 'mese' : 'mesi'}, da{' '}
+            {source.charAt(0).toUpperCase() + source.slice(1)} {containers} {totalMonths} {totalMonths === 1 ? 'mese' : 'mesi'}, da{' '}
             {formatMonthLong(first)} a {formatMonthLong(last)}. Ho scelto l'ultimo periodo di 12 mesi già concluso
             (il mese in corso non si può usare).
             {totalMonths > 12 && ' Per usare altri mesi, cambia il periodo qui sotto: i valori si aggiornano da soli.'}
@@ -56,6 +65,15 @@ export default function ImportReport({
             <div className="mt-2 border-t border-amber-line/70 pt-2">
               {pending.length > 0 ? (
                 <>
+                  {missingYears.length > 0 && (
+                    <p className="mb-2 rounded-lg border border-amber-line bg-card px-3 py-2">
+                      <strong className="font-semibold">
+                        {missingYears.map((y) => `Carica anche il file del ${y}`).join(' e ')}.
+                      </strong>{' '}
+                      Portale Consumi esporta un anno di calendario per volta: i mesi che mancano sono del{' '}
+                      {missingYears.join(' e ')}. Aggiungi il file qui sopra e li compiliamo noi.
+                    </p>
+                  )}
                   <p>
                     <strong className="font-semibold">
                       {pending.length === 1 ? 'Manca 1 mese' : `Mancano ${pending.length} mesi`} da compilare:
@@ -77,6 +95,14 @@ export default function ImportReport({
                 </p>
               )}
             </div>
+          )}
+
+          {!partial && stale && (
+            <p className="mt-2 border-t border-forest-line pt-2">
+              <strong className="font-semibold">Carica anche il file del {newestYear}</strong> se vuoi i consumi più
+              recenti: i file arrivano fino a {formatMonthLong(last)}, ma l'ultimo mese concluso è{' '}
+              {formatMonthLong(lastCompleteMonth())}. Portale Consumi esporta un anno per volta.
+            </p>
           )}
         </div>
       </div>
