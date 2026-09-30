@@ -194,3 +194,20 @@ def test_discount_nominal_to_pre_vat_converts_post_vat():
 def test_discount_nominal_to_pre_vat_keeps_pre_vat_unchanged():
     assert policy.discount_nominal_to_pre_vat(10.0, "01") == 10.0
     assert policy.discount_nominal_to_pre_vat(10.0, None) == 10.0
+
+
+@pytest.mark.parametrize(
+    ("raw", "expected"),
+    [
+        ("12", (12, False)),
+        (" 24 ", (24, False)),
+        ("-1", (None, True)),
+        ("99", (None, True)),
+        (None, (None, False)),
+        ("", (None, False)),
+        ("abc", (None, False)),
+        ("0", (None, False)),
+    ],
+)
+def test_parse_durata(raw, expected):
+    assert policy.parse_durata(raw) == expected

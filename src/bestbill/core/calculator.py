@@ -575,6 +575,8 @@ def compare(
                 conditional_discounts=_conditional_discounts(offer),
                 breakdown=breakdowns[offer.id],
                 dispatching_is_standard_estimate=offer.dispatching_is_standard_estimate,
+                duration_months=offer.duration_months,
+                duration_open_ended=offer.duration_open_ended,
             )
         )
 

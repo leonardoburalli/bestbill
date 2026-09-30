@@ -273,3 +273,11 @@ def test_resolve_supplier_name_unknown_when_no_vat_at_all():
     assert name == "sconosciuto"
     assert vat is None
     assert source is None
+
+
+def test_mlibero_durata_parsed():
+    offers = [r for r in _parsed() if not isinstance(r, Excluded)]
+    seen = {(o.duration_months, o.duration_open_ended) for o in offers}
+    assert (12, False) in seen
+    assert (None, True) in seen  # DURATA -1
+    assert (24, False) in seen

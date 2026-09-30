@@ -379,6 +379,13 @@ class Offer(BaseModel):
     valid_from: date | None = None
     valid_to: date | None = None
 
+    #: Months the economic conditions are guaranteed. ``None`` with
+    #: ``duration_open_ended=False`` means unknown. Old catalogues lack these
+    #: keys and load with the defaults.
+    duration_months: int | None = Field(default=None, ge=1)
+    #: True when the offer has no fixed term (indeterminata).
+    duration_open_ended: bool = False
+
     #: Retailer VAT number (11 digits, zero-padded), when known. ARERA
     #: mercato libero XML only publishes PIVA_UTENTE; PLACET CSV publishes
     #: both ``p_iva`` and ``denominazione`` directly.
@@ -391,6 +398,15 @@ class Offer(BaseModel):
     #: household dispatching (``--include-custom``, see
     #: ``bestbill.cli``), for display/transparency only.
     dispatching_is_standard_estimate: bool = False
+
+    def guarantees_min_duration(self, min_months: int) -> bool:
+        """True if conditions are guaranteed for a fixed period of at least
+        ``min_months``. Open-ended and unknown durations never qualify."""
+        return (
+            not self.duration_open_ended
+            and self.duration_months is not None
+            and self.duration_months >= min_months
+        )
 
     @model_validator(mode="after")
     def _check_bands_and_prices(self) -> Offer:
@@ -641,6 +657,9 @@ class OfferResult(BaseModel):
     #: household estimate rather than its own (custom/legacy offers priced
     #: with ``--include-custom``, see ``bestbill.cli``), for display only.
     dispatching_is_standard_estimate: bool = False
+    #: See ``Offer.duration_months`` / ``Offer.duration_open_ended``.
+    duration_months: int | None = None
+    duration_open_ended: bool = False
 
 
 class Assumptions(BaseModel):

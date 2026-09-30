@@ -3,6 +3,13 @@ import { parseItalianNumber } from '../lib/consumption'
 import type { CompareFilters, PriceType, Scenario, SourceFilter } from '../types'
 import { btnSecondary, FieldError, inputBase, inputBorder, Segmented, Spinner } from './ui'
 
+const DURATION_OPTIONS = [
+  { value: '', label: 'Qualsiasi' },
+  { value: '12', label: 'Almeno 12 mesi' },
+  { value: '24', label: 'Almeno 24 mesi' },
+  { value: '36', label: 'Almeno 36 mesi' },
+]
+
 type Mode = Scenario['kind']
 
 const fmtInput = (n: number) => String(n).replace('.', ',')
@@ -31,6 +38,8 @@ export default function ResultControls({
   const pctId = useId()
   const flatId = useId()
   const helpId = useId()
+  const durationId = useId()
+  const durationHelpId = useId()
 
   const pctNum = parseItalianNumber(pct)
   const flatNum = parseItalianNumber(flat)
@@ -87,6 +96,29 @@ export default function ResultControls({
             PLACET sono le offerte a condizioni standard stabilite da ARERA; le altre sono a libera scelta del
             fornitore.
           </p>
+          <div>
+            <label htmlFor={durationId} className="mb-2 block text-sm font-semibold text-ink">
+              Durata minima
+            </label>
+            <select
+              id={durationId}
+              value={filters.min_duration_months ? String(filters.min_duration_months) : ''}
+              onChange={(e) =>
+                onFilters({ ...filters, min_duration_months: e.target.value ? Number(e.target.value) : null })
+              }
+              aria-describedby={durationHelpId}
+              className={`${inputBase} ${inputBorder(false)} w-auto min-w-[13rem] pr-8`}
+            >
+              {DURATION_OPTIONS.map((o) => (
+                <option key={o.value} value={o.value}>
+                  {o.label}
+                </option>
+              ))}
+            </select>
+            <p id={durationHelpId} className="mt-1.5 max-w-sm text-sm leading-relaxed text-ink-soft">
+              Se scegli una durata minima, le offerte a durata indeterminata o non indicata non vengono mostrate.
+            </p>
+          </div>
         </div>
 
         <div>

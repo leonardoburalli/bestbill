@@ -281,6 +281,20 @@
       "CompareFilters": {
         "additionalProperties": false,
         "properties": {
+          "min_duration_months": {
+            "anyOf": [
+              {
+                "maximum": 120.0,
+                "minimum": 1.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Keep only offers whose economic conditions are guaranteed for at least this many months. Open-ended (indeterminata) and unknown-duration offers are EXCLUDED, since they do not guarantee the conditions for a fixed period.",
+            "title": "Min Duration Months"
+          },
           "price_type": {
             "anyOf": [
               {
@@ -814,6 +828,24 @@
           "band_structure": {
             "$ref": "#/components/schemas/BandStructure"
           },
+          "duration_months": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Months the economic conditions are guaranteed; null when open-ended or unknown.",
+            "title": "Duration Months"
+          },
+          "duration_open_ended": {
+            "default": false,
+            "description": "True for offers with no fixed term.",
+            "title": "Duration Open Ended",
+            "type": "boolean"
+          },
           "id": {
             "title": "Id",
             "type": "string"
@@ -1010,6 +1042,24 @@
           },
           "dispatching_is_standard_estimate": {
             "title": "Dispatching Is Standard Estimate",
+            "type": "boolean"
+          },
+          "duration_months": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Months the economic conditions are guaranteed; null when open-ended or unknown.",
+            "title": "Duration Months"
+          },
+          "duration_open_ended": {
+            "default": false,
+            "description": "True for offers with no fixed term.",
+            "title": "Duration Open Ended",
             "type": "boolean"
           },
           "energy_price_eur_kwh": {

@@ -1,3 +1,4 @@
+import json
 from datetime import date
 
 import pytest
@@ -120,3 +121,30 @@ def test_scaled_scenario_requires_positive_factor():
 def test_flat_scenario_requires_nonnegative_value():
     with pytest.raises(ValidationError):
         Flat(value=-0.01)
+
+
+def test_offer_json_without_duration_keys_loads_with_defaults():
+    from bestbill.core.models import Offer
+    from tests.helpers import fixed_offer
+
+    data = json.loads(fixed_offer().model_dump_json())
+    data.pop("duration_months")
+    data.pop("duration_open_ended")
+    offer = Offer.model_validate_json(json.dumps(data))
+    assert offer.duration_months is None
+    assert offer.duration_open_ended is False
+
+
+def test_guarantees_min_duration_semantics():
+    from tests.helpers import fixed_offer
+
+    base = fixed_offer()
+    assert base.guarantees_min_duration(12) is False  # unknown
+    assert base.model_copy(update={"duration_months": 12}).guarantees_min_duration(12)
+    assert not base.model_copy(update={"duration_months": 12}).guarantees_min_duration(
+        13
+    )
+    open_ended = base.model_copy(
+        update={"duration_months": 36, "duration_open_ended": True}
+    )
+    assert open_ended.guarantees_min_duration(1) is False

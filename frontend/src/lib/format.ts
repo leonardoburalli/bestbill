@@ -30,3 +30,48 @@ export function formatDate(iso: string): string {
   if (!m) return iso
   return `${Number(m[3])} ${MONTHS[Number(m[2]) - 1]} ${m[1]}`
 }
+
+export type DurationInfo =
+  | { kind: 'months'; months: number }
+  | { kind: 'open' }
+  | { kind: 'unknown' }
+
+type DurationLike = {
+  price_type?: 'fixed' | 'variable' | null
+  duration_months?: number | null
+  duration_open_ended?: boolean | null
+}
+
+/** Reads the duration fields defensively: an older API may omit them, which means "unknown". */
+export function durationInfo(item: DurationLike): DurationInfo {
+  if (item.duration_open_ended === true) return { kind: 'open' }
+  const m = item.duration_months
+  if (typeof m === 'number' && Number.isFinite(m) && m > 0) return { kind: 'months', months: Math.round(m) }
+  return { kind: 'unknown' }
+}
+
+const monthsLabel = (n: number) => `${n} ${n === 1 ? 'mese' : 'mesi'}`
+
+/** Full wording: "Prezzo bloccato 24 mesi" (fixed), "Condizioni garantite 24 mesi" (variable),
+ *  "Durata indeterminata", "Durata non indicata". */
+export function formatDuration(item: DurationLike): string {
+  const d = durationInfo(item)
+  if (d.kind === 'open') return 'Durata indeterminata'
+  if (d.kind === 'unknown') return 'Durata non indicata'
+  return `${item.price_type === 'fixed' ? 'Prezzo bloccato' : 'Condizioni garantite'} ${monthsLabel(d.months)}`
+}
+
+/** Short wording for tight spaces: "24 mesi", "Indeterminata", "—". */
+export function formatDurationShort(item: DurationLike): string {
+  const d = durationInfo(item)
+  if (d.kind === 'open') return 'Indeterminata'
+  if (d.kind === 'unknown') return '—'
+  return monthsLabel(d.months)
+}
+
+/** CSV value: months as a number, "indeterminata", or empty when unknown. */
+export function durationCsvValue(item: DurationLike): number | string | null {
+  const d = durationInfo(item)
+  if (d.kind === 'open') return 'indeterminata'
+  return d.kind === 'months' ? d.months : null
+}

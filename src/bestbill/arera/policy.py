@@ -50,6 +50,35 @@ from bestbill.core.models import (
     PriceType,
 )
 
+#: mercato libero DETTAGLIOOFFERTA/DURATA values meaning "no fixed term".
+#: -1 is indeterminata; 99 is treated the same for now.
+#: pending confirmation against ARERA spec
+OPEN_ENDED_DURATA = frozenset({-1, 99})
+
+#: PLACET conditions are fixed for 12 months by ARERA regulation (the PLACET
+#: CSV has no duration column).
+PLACET_DURATION_MONTHS = 12
+
+
+def parse_durata(value: str | None) -> tuple[int | None, bool]:
+    """Map a raw DURATA text to ``(duration_months, open_ended)``.
+
+    Missing/invalid/non-positive (other than open-ended codes) -> unknown
+    ``(None, False)``.
+    """
+    if value is None:
+        return None, False
+    try:
+        n = int(value.strip())
+    except ValueError:
+        return None, False
+    if n in OPEN_ENDED_DURATA:
+        return None, True
+    if n < 1:
+        return None, False
+    return n, False
+
+
 #: Network losses applied at low voltage, art. 13.2 methodology, verified
 #: against AU "Regole per il calcolo della spesa annua stimata" v4.0 (see
 #: docs/arera-data.md "Methodology points" and ``losses_mode()`` below for

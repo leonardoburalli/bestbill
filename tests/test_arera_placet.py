@@ -122,3 +122,10 @@ def test_placet_decode_falls_back_to_cp1252():
     result = list(parse_placet_bytes(raw, PARAMS))
     assert len(result) == 1
     assert not isinstance(result[0], Excluded)
+
+
+def test_placet_duration_is_12_months():
+    rows = parse_placet_file(str(FIXTURE), PARAMS)
+    offers = [r for r in rows if not isinstance(r, Excluded)]
+    assert offers
+    assert all(o.duration_months == 12 and not o.duration_open_ended for o in offers)

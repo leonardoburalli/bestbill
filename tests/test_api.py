@@ -110,6 +110,8 @@ def test_offers_pagination_and_fields(client):
         "band_structure",
         "source",
         "valid_to",
+        "duration_months",
+        "duration_open_ended",
     }
     page2 = client.get("/api/offers", params={"limit": 5, "offset": 5}).json()
     assert page2["items"][0]["id"] != page["items"][0]["id"]
@@ -675,3 +677,34 @@ def test_provider_injection(catalog_dir):
     )
     with TestClient(create_app(Settings(), provider=provider)) as c:
         assert c.get("/api/health").json()["catalog_loaded"] is True
+
+
+def test_compare_min_duration_filter_and_fields(client):
+    allr = client.post("/api/compare", json=compare_body(top_n=200)).json()
+    assert all(
+        "duration_months" in x and "duration_open_ended" in x for x in allr["results"]
+    )
+    assert any(x["duration_open_ended"] for x in allr["results"])
+    res = client.post(
+        "/api/compare",
+        json=compare_body(top_n=200, filters={"min_duration_months": 24}),
+    ).json()
+    assert res["results"]
+    assert res["total_matching"] < res["total_eligible"]
+    for x in res["results"]:
+        assert not x["duration_open_ended"]
+        assert x["duration_months"] >= 24
+
+
+def test_compare_min_duration_validation(client):
+    for bad_value in (0, 121):
+        r = client.post(
+            "/api/compare",
+            json=compare_body(filters={"min_duration_months": bad_value}),
+        )
+        assert r.status_code == 422
+
+
+def test_offers_list_has_duration_fields(client):
+    items = client.get("/api/offers?limit=5").json()["items"]
+    assert all("duration_months" in i and "duration_open_ended" in i for i in items)

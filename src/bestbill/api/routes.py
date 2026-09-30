@@ -157,6 +157,8 @@ def list_offers(
                 band_structure=o.band_structure,
                 source=o.source,
                 valid_to=o.valid_to,
+                duration_months=o.duration_months,
+                duration_open_ended=o.duration_open_ended,
             )
             for o in page
         ],
@@ -300,6 +302,12 @@ def compare_offers(body: CompareRequest, snap: Snapshot) -> CompareResponse:
         and (
             body.filters.source is None
             or by_id[r.offer_id].source.value == body.filters.source
+        )
+        and (
+            body.filters.min_duration_months is None
+            or by_id[r.offer_id].guarantees_min_duration(
+                body.filters.min_duration_months
+            )
         )
     ]
     items: list[ResultItem] = []

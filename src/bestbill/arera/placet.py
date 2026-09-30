@@ -165,6 +165,7 @@ def parse_placet_rows(text: str, params: Parameters) -> Iterator[ParsedRow]:
                 dispatching_approximate=dispatching_result.approximate,
                 valid_from=_to_date(row.get("data_inizio", "")),
                 valid_to=_to_date(row.get("data_fine", "")),
+                duration_months=policy.PLACET_DURATION_MONTHS,
                 supplier_vat=supplier_vat,
                 supplier_name_source=SupplierNameSource.PLACET,
             )

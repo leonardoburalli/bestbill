@@ -2,7 +2,7 @@ import { Fragment, useState } from 'react'
 import { ALL_IN_HINT, formatEnergyPrice, formatEur, formatEurPerKwh, formatEurPerYear } from '../lib/format'
 import type { ResultItem } from '../types'
 import { ChevronDownIcon } from './icons'
-import { BreakEvenText, OfferBadges, OfferDetails, OfferFlags, OfferLink } from './OfferParts'
+import { BreakEvenText, OfferBadges, OfferDetails, OfferDuration, OfferFlags, OfferLink } from './OfferParts'
 import { useIsWide } from './useIsWide'
 
 const deltaText = (n: number) => (n <= 0.005 ? 'Migliore in assoluto' : `+${formatEur(n)}`)
@@ -86,6 +86,7 @@ function OfferTable({ items, open, toggle, roomy }: ListProps & { roomy: boolean
                     <p className="font-semibold leading-snug">{it.name}</p>
                     <p className="text-sm text-ink-soft">{it.supplier}</p>
                     <div className="mt-2"><OfferBadges item={it} /></div>
+                    <OfferDuration item={it} className="mt-1.5" />
                     <BreakEvenText item={it} />
                     <OfferFlags item={it} />
                   </td>
@@ -167,6 +168,7 @@ function OfferCards({ items, open, toggle }: ListProps) {
               </div>
             </div>
             <div className="mt-2.5"><OfferBadges item={it} /></div>
+            <OfferDuration item={it} className="mt-1.5" />
             <dl className="mt-3 grid grid-cols-2 gap-3 border-t border-dashed border-line pt-3 text-sm">
               <div>
                 <dt className="text-xs text-ink-soft">Prezzo energia</dt>
