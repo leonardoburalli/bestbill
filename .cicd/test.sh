@@ -4,7 +4,3 @@
 source "$(dirname "$0")/lib.sh"
 
 step "Tests" uv run pytest "$@"
-
-if [[ -f frontend/package.json ]]; then
-  step "Frontend tests" npm test --prefix frontend
-fi

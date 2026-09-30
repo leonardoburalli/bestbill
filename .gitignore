@@ -29,3 +29,5 @@ catalog/*.sqlite
 # Development plans (local only)
 PLAN.md
 PLAN.v*.md
+
+*.tsbuildinfo

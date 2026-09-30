@@ -1,22 +1,82 @@
 @import "tailwindcss";
 
 @theme {
-  --color-brand: #0d9488;
-  --color-brand-light: #ccfbf1;
-  --color-brand-dark: #0f766e;
-  --color-warm: #f59e0b;
-  --color-warm-light: #fef3c7;
-  --color-danger: #ef4444;
-  --color-danger-light: #fee2e2;
-  --color-surface: #f8fafc;
-  --color-border: #e2e8f0;
-  --color-text: #1e293b;
-  --color-text-muted: #64748b;
+  /* Carta, inchiostro e verde bosco: colori calmi, contrasto AA su tutti gli accoppiamenti usati. */
+  --color-paper: #f6f2ea;
+  --color-paper-deep: #ece6d8;
+  --color-card: #fffdf8;
+  --color-ink: #18251f;
+  --color-ink-soft: #4a5852;
+  --color-line: #ddd5c3;
+  --color-field: #8a8471;
+  --color-forest: #1d5a44;
+  --color-forest-dark: #134030;
+  --color-forest-soft: #e1eee6;
+  --color-forest-line: #a9cbb8;
+  --color-amber-ink: #6f4400;
+  --color-amber-soft: #fbeecb;
+  --color-amber-line: #e6c777;
+  --color-brick: #9b2c20;
+  --color-brick-soft: #fbe7e2;
+  --color-brick-line: #e4a89f;
+  --color-focus: #1a56db;
+
+  --font-display: "Iowan Old Style", "Palatino Linotype", Palatino, "Book Antiqua", Georgia, serif;
+  --font-sans: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", sans-serif;
+
+  --animate-rise: rise 0.55s cubic-bezier(0.2, 0.7, 0.2, 1) both;
+  --animate-breathe: breathe 2.4s ease-in-out infinite;
+  --animate-sweep: sweep 1.6s ease-in-out infinite;
 }
 
+@keyframes rise {
+  from { opacity: 0; transform: translateY(10px); }
+  to { opacity: 1; transform: none; }
+}
+@keyframes breathe {
+  0%, 100% { opacity: 0.35; transform: scale(0.85); }
+  50% { opacity: 1; transform: scale(1); }
+}
+@keyframes sweep {
+  0% { transform: translateX(-100%); }
+  100% { transform: translateX(350%); }
+}
+
+html { scroll-behavior: smooth; }
+
 body {
-  font-family: system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
-  color: var(--color-text);
-  background: var(--color-surface);
+  font-family: var(--font-sans);
+  color: var(--color-ink);
+  background-color: var(--color-paper);
+  background-image:
+    radial-gradient(60rem 28rem at 85% -8rem, rgb(29 90 68 / 0.09), transparent 70%),
+    radial-gradient(40rem 24rem at -5% 12rem, rgb(230 199 119 / 0.16), transparent 70%);
+  background-repeat: no-repeat;
   -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+
+:focus-visible {
+  outline: 3px solid var(--color-focus);
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+
+.tabular { font-variant-numeric: tabular-nums; }
+
+/* Bordo a "scontrino": linea tratteggiata che ricorda la perforazione */
+.perforation {
+  background-image: linear-gradient(to right, var(--color-line) 55%, transparent 0);
+  background-size: 10px 2px;
+  background-repeat: repeat-x;
+  height: 2px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html { scroll-behavior: auto; }
+  *, *::before, *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+  }
 }

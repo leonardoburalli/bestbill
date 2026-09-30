@@ -1,4 +1,4 @@
-.PHONY: install test lint check smoke catalog catalog-publish openapi
+.PHONY: install test lint check smoke frontend catalog catalog-publish openapi
 
 install:
 	.cicd/install.sh
@@ -10,6 +10,9 @@ lint:
 	.cicd/lint.sh
 
 check: test lint
+
+frontend:
+	.cicd/frontend.sh
 
 smoke:
 	.cicd/smoke.sh

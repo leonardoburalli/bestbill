@@ -12,6 +12,16 @@ export type Residency = 'resident' | 'non_resident'
 
 export type BreakEvenStatus = 'cheaper_below' | 'never_cheaper' | 'always_cheaper'
 
+export type SourceFilter = 'placet' | 'mlibero'
+export type DiscountValidity = 'on_entry' | 'within_12_months' | 'beyond_12_months'
+export type DiscountUnit =
+  | 'eur_year'
+  | 'eur_kw_year'
+  | 'eur_kwh'
+  | 'eur_smc'
+  | 'eur_one_off'
+  | 'percent'
+
 export type SupplierNameSource = 'arera' | 'placet' | 'domain' | 'vat'
 
 // ── Health / Meta ──────────────────────────────────────────────────────────
@@ -60,6 +70,17 @@ export interface SampleHousehold {
   months: SampleMonth[]
 }
 
+export interface ParsedProfile {
+  location: string
+  months: SampleMonth[]
+}
+
+export interface ParseResult {
+  profiles: ParsedProfile[]
+  /** Locations found in the file but not usable. */
+  skipped: string[]
+}
+
 // ── Comuni ─────────────────────────────────────────────────────────────────
 
 export interface Comune {
@@ -81,7 +102,7 @@ export interface MonthInput {
 
 export interface CompareFilters {
   price_type?: PriceType | null
-  source?: 'placet' | 'mlibero' | null
+  source?: SourceFilter | null
 }
 
 export type Scenario = Historical | Scaled | Flat
@@ -104,10 +125,10 @@ export interface CompareRequest {
   consumption: MonthInput[] // exactly 12
   residency: Residency
   istat_comune?: string | null
-  committed_power_kw?: number
-  scenario: Scenario
-  filters: CompareFilters
-  top_n?: number
+  committed_power_kw?: number // > 0, <= 30
+  scenario?: Scenario
+  filters?: CompareFilters
+  top_n?: number // 1..200
 }
 
 // ── Compare Response ───────────────────────────────────────────────────────
@@ -126,10 +147,10 @@ export interface CostBreakdown {
 export interface Discount {
   name: string
   description: string
-  validity: string
+  validity: DiscountValidity
   conditional: boolean
   amount: number
-  unit: string
+  unit: DiscountUnit
   applies_before_vat: boolean
   consumption_from_kwh: number | null
   consumption_to_kwh: number | null
@@ -163,8 +184,9 @@ export interface ResultItem {
 export interface Assumptions {
   period_start: string
   period_end: string
+  /** Keys are ISO dates (first of month, YYYY-MM-01). */
   pun_months_used: Record<string, number>
-  substituted_pun_months: string[]
+  substituted_pun_months: string[] // ISO dates
   band_split_source: 'user' | 'standard'
   scenario: Scenario
   statement: string
@@ -192,38 +214,4 @@ export interface ValidationErrorResponse {
 
 export interface ErrorResponse {
   detail: string
-}
-
-// ── API Client ─────────────────────────────────────────────────────────────
-
-const API_BASE = import.meta.env.VITE_API_BASE || 'https://bestbill-api.onrender.com'
-
-async function api<T>(path: string, init?: RequestInit): Promise<T> {
-  const url = `${API_BASE}${path}`
-  const res = await fetch(url, {
-    ...init,
-    headers: {
-      'Content-Type': 'application/json',
-      ...init?.headers,
-    },
-  })
-  if (!res.ok) {
-    const body = await res.json().catch(() => null)
-    const detail = body?.detail
-    const message = typeof detail === 'string'
-      ? detail
-      : Array.isArray(detail)
-        ? detail.map((e: { field: string; message: string }) => `${e.field}: ${e.message}`).join(' | ')
-        : `Errore del server (${res.status})`
-    throw new Error(message)
-  }
-  return res.json()
-}
-
-export const apiClient = {
-  health: () => api<Health>('/api/health'),
-  catalogMeta: () => api<CatalogMeta>('/api/catalog/meta'),
-  sample: () => api<SampleHousehold>('/api/sample'),
-  comuni: (q: string) => api<Comune[]>(`/api/comuni?q=${encodeURIComponent(q)}`),
-  compare: (body: CompareRequest) => api<CompareResponse>('/api/compare', { method: 'POST', body: JSON.stringify(body) }),
 }
