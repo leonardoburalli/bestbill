@@ -8,9 +8,14 @@ const MONTHS = ['gen', 'feb', 'mar', 'apr', 'mag', 'giu', 'lug', 'ago', 'set', '
 export const formatEur = (n: number) => eur.format(n)
 export const formatEurCompact = (n: number) => eurCompact.format(n)
 export const formatEurPerKwh = (n: number) => `${perKwh.format(n)} €/kWh`
-/** Advertised energy price: "0,1604 €/kWh" (fixed) or "PUN + 0,0120 €/kWh" (spread over PUN). */
-export const formatEnergyPrice = (n: number, kind: 'fixed' | 'pun_spread') =>
-  kind === 'pun_spread' ? `PUN + ${formatEurPerKwh(n)}` : formatEurPerKwh(n)
+/** Advertised energy price: "0,1604 €/kWh" (fixed) or "PUN + 0,0120 €/kWh" (spread over PUN).
+ *  "—" when the API did not send it (older API version). */
+export const formatEnergyPrice = (n: number | null | undefined, kind: 'fixed' | 'pun_spread' | null | undefined) =>
+  typeof n !== 'number' || !Number.isFinite(n)
+    ? '—'
+    : kind === 'pun_spread'
+      ? `PUN + ${formatEurPerKwh(n)}`
+      : formatEurPerKwh(n)
 /** Shown next to the all-in average so it is not compared with the advertised price. */
 export const ALL_IN_HINT =
   'Costo totale diviso per i kWh: include quota fissa (CCV), dispacciamento e altri costi. Per questo è più alto del prezzo pubblicizzato.'

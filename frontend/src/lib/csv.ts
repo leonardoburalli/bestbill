@@ -17,10 +17,11 @@ function cell(v: Cell): string {
 }
 
 /** Fixed: "0,1604". Spread over PUN: "PUN + 0,0120" (text, so Excel keeps the prefix). */
-const energyPriceCell = (r: ResultItem): Cell =>
-  r.energy_price_kind === 'pun_spread'
-    ? `PUN + ${r.energy_price_eur_kwh.toFixed(4).replace('.', ',')}`
-    : num(r.energy_price_eur_kwh, 4)
+const energyPriceCell = (r: ResultItem): Cell => {
+  const v = r.energy_price_eur_kwh
+  if (typeof v !== 'number' || !Number.isFinite(v)) return ''
+  return r.energy_price_kind === 'pun_spread' ? `PUN + ${v.toFixed(4).replace('.', ',')}` : num(v, 4)
+}
 
 const row = (cells: Cell[]) => cells.map(cell).join(SEP)
 

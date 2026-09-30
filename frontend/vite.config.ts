@@ -5,7 +5,8 @@ import tailwindcss from '@tailwindcss/vite'
 
 export default defineConfig(({ mode }) => {
   const env = loadEnv(mode, '.', '')
-  const target = env.VITE_API_BASE || 'https://bestbill-api.onrender.com'
+  // Dev proxy target. BESTBILL_API_PROXY=http://localhost:8000 → local API (make frontend-dev).
+  const target = env.BESTBILL_API_PROXY || env.VITE_API_BASE || 'https://bestbill-api.onrender.com'
   return {
     plugins: [react(), tailwindcss()],
     server: {
