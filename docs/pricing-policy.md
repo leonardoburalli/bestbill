@@ -62,6 +62,20 @@ Codes declared by one offer are additive (no overlap by construction). Unit €/
 - Sconto/CODICE_COMPONENTE_FASCIA (per-band discount targeting) isn't
   implemented; a priced Sconto carrying it excludes the whole offer.
 
+## Offer duration
+
+Each offer exposes `duration_months` (months the economic conditions are
+guaranteed) and `duration_open_ended`. Duration is informational: it never
+affects the cost.
+
+- Mercato libero: `DettaglioOfferta/DURATA`. `-1` and `99` are open-ended
+  (`OPEN_ENDED_DURATA` in `arera/policy.py`; **pending confirmation against
+  ARERA spec**). Missing/invalid values are unknown (`null` + `false`).
+- PLACET: no column; ARERA regulation fixes PLACET conditions at 12 months.
+- Filter `min_duration_months` keeps offers with `duration_months >= value`;
+  open-ended and unknown offers are excluded.
+- Old catalogues without these keys still load (unknown), so no schema bump.
+
 ## Consumption-tiered component prices (ComponenteImpresa CONSUMO_DA/CONSUMO_A)
 - The price applies to the portion of the offer's own band annual
   consumption inside `[CONSUMO_DA, CONSUMO_A]`, additive/marginal like a

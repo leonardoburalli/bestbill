@@ -1,7 +1,7 @@
 import { ALL_IN_HINT, formatEnergyPrice, formatEur, formatEurPerKwh, formatEurPerMonth, formatEurPerYear } from '../lib/format'
 import type { ResultItem } from '../types'
 import { TrophyIcon } from './icons'
-import { BreakEvenText, OfferBadges, OfferFlags, OfferLink } from './OfferParts'
+import { BreakEvenText, OfferBadges, OfferDuration, OfferFlags, OfferLink } from './OfferParts'
 
 export default function BestOffer({ item, next }: { item: ResultItem; next?: ResultItem }) {
   const overall = item.rank === 1
@@ -26,6 +26,7 @@ export default function BestOffer({ item, next }: { item: ResultItem; next?: Res
           <p className="font-display text-2xl font-semibold leading-tight sm:text-3xl">{item.name}</p>
           <p className="mt-1 text-lg text-ink-soft">{item.supplier}</p>
           <div className="mt-3"><OfferBadges item={item} /></div>
+          <OfferDuration item={item} className="mt-2 text-sm" />
           <BreakEvenText item={item} />
           <OfferFlags item={item} />
           <div className="mt-4"><OfferLink item={item} className="text-base" /></div>

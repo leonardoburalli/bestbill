@@ -630,6 +630,10 @@ def parse_offerta(
         else None
     )
 
+    duration_months, duration_open_ended = policy.parse_durata(
+        _text(dettaglio, "DURATA")
+    )
+
     contatti = dettaglio.find(f"{_NS}Contatti")
     url = None
     url_sito_venditore = None
@@ -677,6 +681,8 @@ def parse_offerta(
             consumption_max_kwh=consumo_max,
             valid_from=valid_from,
             valid_to=valid_to,
+            duration_months=duration_months,
+            duration_open_ended=duration_open_ended,
             supplier_vat=supplier_vat,
             supplier_name_source=supplier_name_source,
         )

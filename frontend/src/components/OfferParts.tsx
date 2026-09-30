@@ -1,8 +1,8 @@
 import { describeBreakEven } from '../lib/breakEven'
-import { ALL_IN_HINT, formatDate, formatEnergyPrice, formatEur, formatEurPerKwh } from '../lib/format'
+import { ALL_IN_HINT, durationInfo, formatDate, formatDuration, formatEnergyPrice, formatEur, formatEurPerKwh } from '../lib/format'
 import { normalizeOfferUrl } from '../lib/url'
 import type { Discount, OfferSource, PriceType, ResultItem } from '../types'
-import { ExternalIcon } from './icons'
+import { ClockIcon, ExternalIcon } from './icons'
 import { Badge } from './ui'
 
 export const SOURCE_LABEL: Record<OfferSource, string> = {
@@ -21,6 +21,21 @@ export function OfferBadges({ item }: { item: ResultItem }) {
       <Badge tone={item.price_type === 'fixed' ? 'forest' : 'amber'}>{PRICE_LABEL[item.price_type]}</Badge>
       <Badge>{SOURCE_LABEL[item.source]}</Badge>
     </span>
+  )
+}
+
+/** Calm one-liner under the badges. Fixed price + months reads as a selling point (forest ink);
+ *  everything else stays neutral. */
+export function OfferDuration({ item, className = '' }: { item: ResultItem; className?: string }) {
+  const d = durationInfo(item)
+  const lock = d.kind === 'months' && item.price_type === 'fixed'
+  return (
+    <p
+      className={`flex items-center gap-1.5 text-[0.8rem] leading-snug ${lock ? 'font-medium text-forest-dark' : 'text-ink-soft'} ${className}`}
+    >
+      <ClockIcon size={14} className="shrink-0" />
+      {formatDuration(item)}
+    </p>
   )
 }
 
@@ -119,6 +134,20 @@ export function OfferDetails({ item, id }: { item: ResultItem; id: string }) {
       </div>
 
       <div className="space-y-4 text-[0.95rem]">
+        <div>
+          <h4 className="text-sm font-semibold">Durata</h4>
+          <p className="mt-1 leading-relaxed text-ink-soft">
+            {formatDuration(item)}.{' '}
+            {durationInfo(item).kind === 'months'
+              ? item.price_type === 'fixed'
+                ? 'Per questo periodo il prezzo dell\'energia non cambia.'
+                : 'Il prezzo segue il mercato; questa è la durata delle condizioni indicate dal fornitore.'
+              : durationInfo(item).kind === 'open'
+                ? 'L\'offerta non ha una scadenza fissata.'
+                : 'Il fornitore non ha indicato per quanto tempo valgono le condizioni.'}
+          </p>
+        </div>
+
         {describeBreakEven(item) && (
           <div>
             <h4 className="text-sm font-semibold">Se il prezzo dell'energia cambia</h4>

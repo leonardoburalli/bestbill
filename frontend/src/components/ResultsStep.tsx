@@ -51,7 +51,7 @@ export default function ResultsStep({
 }) {
   const { status, error, slow } = comparison
   const loading = status === 'loading'
-  const filtersActive = !!(filters.price_type || filters.source)
+  const filtersActive = !!(filters.price_type || filters.source || filters.min_duration_months)
 
   const exportCsv = () => {
     if (!data) return

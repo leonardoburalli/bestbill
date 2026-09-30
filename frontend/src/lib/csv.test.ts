@@ -49,6 +49,19 @@ describe('buildResultsCsv', () => {
     const p = buildResultsCsv([r({ price_type: 'variable', energy_price_kind: 'pun_spread', energy_price_eur_kwh: 0.012 })], assumptions)
     expect(p.split('\r\n')[1]).toContain(';PUN + 0,0120;0,1370;')
   })
+  it('has a Durata (mesi) column: number, "indeterminata" or empty', () => {
+    const c = buildResultsCsv(
+      [24, 'open', null, 12].map((d) => r({ supplier: 'Acme', name: 'Uno', duration_months: typeof d === 'number' ? d : null, duration_open_ended: d === 'open' })),
+      assumptions,
+    ).split('\r\n')
+    const header = c[0].slice(1).split(';')
+    const i = header.indexOf('Durata (mesi)')
+    expect(i).toBe(header.indexOf('Una tantum (EUR)') + 1)
+    expect(c[1].split(';')[i]).toBe('24')
+    expect(c[2].split(';')[i]).toBe('indeterminata')
+    expect(c[3].split(';')[i]).toBe('')
+    expect(c[4].split(';')[i]).toBe('12')
+  })
   it('neutralises formulas in text', () => expect(lines[2]).toContain("'=HYPERLINK"))
   it('includes label, period and statement', () => {
     expect(csv).toContain('costo materia energia (IVA esclusa)')

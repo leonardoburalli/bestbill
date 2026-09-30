@@ -99,7 +99,10 @@ F1 33 %, F2 31 %, F3 36 % (F23 = 67 %). ARERA reference customer ("cliente tipo"
 - `p_vol_mono` / `p_vol_bf1` / `p_vol_bf23`: household prices in €/kWh (mono or F1/F23).
 - `p_vol_f1..f3`: non-domestic trioraria prices in €/kWh.
 - `alpha`: spread over PINGM (monthly PUN Index GME) in €/kWh.
+- No duration column: PLACET offers get `duration_months = 12` (regulation).
 - Geography: ~9 % of rows restrict by semicolon-separated ISTAT codes; blank means national.
+
+- Mercato libero `DettaglioOfferta/DURATA` -> `duration_months` (`-1`/`99` = open-ended, see docs/pricing-policy.md "Offer duration").
 
 ## Methodology points that affect our engine
 - **Network losses**: **verified** against AU "Regole per il calcolo della

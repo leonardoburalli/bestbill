@@ -85,6 +85,14 @@ class OfferListItem(BaseModel):
     band_structure: BandStructure
     source: OfferSource
     valid_to: date | None
+    duration_months: int | None = Field(
+        default=None,
+        description="Months the economic conditions are guaranteed; null when "
+        "open-ended or unknown.",
+    )
+    duration_open_ended: bool = Field(
+        default=False, description="True for offers with no fixed term."
+    )
 
 
 class OfferPage(BaseModel):
@@ -169,6 +177,15 @@ class CompareFilters(BaseModel):
 
     price_type: PriceType | None = None
     source: Literal["placet", "mlibero"] | None = None
+    min_duration_months: int | None = Field(
+        default=None,
+        ge=1,
+        le=120,
+        description="Keep only offers whose economic conditions are guaranteed "
+        "for at least this many months. Open-ended (indeterminata) and "
+        "unknown-duration offers are EXCLUDED, since they do not guarantee "
+        "the conditions for a fixed period.",
+    )
 
 
 class CompareRequest(BaseModel):
@@ -243,6 +260,14 @@ class ResultItem(BaseModel):
     one_off_fee_eur: float
     conditional_discounts: list[Discount]
     dispatching_is_standard_estimate: bool
+    duration_months: int | None = Field(
+        default=None,
+        description="Months the economic conditions are guaranteed; null when "
+        "open-ended or unknown.",
+    )
+    duration_open_ended: bool = Field(
+        default=False, description="True for offers with no fixed term."
+    )
 
 
 class CompareResponse(BaseModel):

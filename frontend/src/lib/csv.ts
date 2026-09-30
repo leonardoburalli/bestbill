@@ -1,4 +1,5 @@
 import type { Assumptions, ResultItem } from '../types'
+import { durationCsvValue } from './format'
 
 const SEP = ';'
 
@@ -29,7 +30,7 @@ const HEADER = [
   'Posizione', 'Fornitore', 'Offerta', 'Tipo prezzo', 'Fonte',
   'Costo (EUR)', 'CCV (€/anno)', 'Differenza dalla migliore (EUR)',
   'Prezzo energia (€/kWh)', 'Costo medio tutto incluso (€/kWh)',
-  'PUN di pareggio (EUR/kWh)', 'Una tantum (EUR)', 'Valida fino al', 'Link',
+  'PUN di pareggio (EUR/kWh)', 'Una tantum (EUR)', 'Durata (mesi)', 'Valida fino al', 'Link',
 ]
 
 export function buildResultsCsv(results: ResultItem[], assumptions: Assumptions): string {
@@ -41,7 +42,7 @@ export function buildResultsCsv(results: ResultItem[], assumptions: Assumptions)
         num(r.cost_eur, 2), num(r.breakdown.fixed_fees, 2), num(r.delta_vs_best_eur, 2),
         energyPriceCell(r), num(r.eur_per_kwh_effective, 4),
         r.break_even_pun_eur_kwh === null ? null : num(r.break_even_pun_eur_kwh, 4),
-        num(r.one_off_fee_eur, 2), r.valid_to, r.url,
+        num(r.one_off_fee_eur, 2), durationCsvValue(r), r.valid_to, r.url,
       ]),
     )
   }

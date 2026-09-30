@@ -92,6 +92,8 @@ export interface MonthInput {
 export interface CompareFilters {
   price_type?: PriceType | null
   source?: SourceFilter | null
+  /** Keep offers whose duration is at least this many months. Open-ended/unknown are excluded by the server. */
+  min_duration_months?: number | null
 }
 
 export type Scenario = Historical | Scaled | Flat
@@ -174,6 +176,9 @@ export interface ResultItem {
   one_off_fee_eur: number
   conditional_discounts: Discount[]
   dispatching_is_standard_estimate: boolean
+  /** Contract / price-lock duration. null + duration_open_ended=false = unknown. May be missing on older API versions. */
+  duration_months?: number | null
+  duration_open_ended?: boolean
 }
 
 export interface Assumptions {
