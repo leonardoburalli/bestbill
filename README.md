@@ -5,8 +5,8 @@ free, open-source tool for Italian households: enter 12 months of kWh, get a
 ranked list of offers with a clear breakdown of the assumptions behind the
 estimate — no sign-up, no personal data stored.
 
-> Status: core engine + CLI + ARERA catalogue importer (Phase 0–2 of
-> `PLAN.md`). The web app (FastAPI, React frontend) is coming next; see
+> Status: core engine + CLI + ARERA catalogue importer + stateless API
+> (Phase 0–3 of `PLAN.md`). The React frontend is coming next; see
 > `PLAN.md` for the full roadmap.
 
 ## Scope: what this compares
@@ -45,6 +45,10 @@ no full-bill calculation anywhere in this codebase. Offers referencing
   downloads the day's source files.
 - A legacy Excel reader (`bestbill.io.excel`) for the original
   `Tariffario` / `Storico_<Location>` workbook format.
+- A stateless HTTP API (`bestbill.api`, FastAPI): compare, offers browse,
+  comune autocomplete, Excel parse, sample household, catalogue meta.
+- Area-restricted offers are matched by comune, provincia and regione using
+  the ISTAT comuni table (`bestbill.geo`).
 - A CLI (`bestbill`) with `compare` (ranks custom and/or catalogue offers,
   prints, writes a CSV, optionally a chart) and `catalog build|fetch`
   subcommands.
@@ -98,7 +102,8 @@ make install   # uv sync --locked --extra dev
 make test      # pytest (marked "slow" tests need the full ARERA files, skipped by default)
 make lint      # ruff, ruff format --check, mypy, shellcheck
 make check     # test + lint
-make smoke     # end-to-end CLI run on the synthetic sample + fixture catalogue
+make smoke     # end-to-end CLI + API run on the synthetic sample + fixture catalogue
+make openapi   # regenerate openapi.json
 make catalog   # fetch + build + validate today's ARERA catalogue (network)
 make catalog-publish  # build and publish the catalogue (see below)
 ```
@@ -175,6 +180,97 @@ Prerequisites: `uv` and the GitHub CLI authenticated with `gh auth login`
 release, never the raw ARERA files. The app shows the catalogue date, so
 users can see how fresh the data is.
 
+## The API
+
+A stateless FastAPI service (`bestbill.api`) over the read-only catalogue.
+Consumption and uploaded files are processed in memory per request and are
+**never stored or logged** (no request-body logging; validation errors never
+echo values). Every cost is the commodity/retailer cost only, before VAT
+("costo materia energia (IVA esclusa)"), and a backtest — see
+"The backtest assumption". Households only (residents and non-residents).
+
+Run it locally on a catalogue built with `make catalog` (or the smoke test's
+fixture catalogue in `build/smoke/catalog/`):
+
+```bash
+BESTBILL_CATALOG_PATH=build/catalog/catalog.sqlite \
+  uv run uvicorn bestbill.api.main:app --reload
+# interactive docs: http://127.0.0.1:8000/api/docs
+```
+
+| Method | Path | Purpose |
+|--------|------|---------|
+| GET | `/api/health` | liveness; `catalog_loaded`, snapshot date and age |
+| GET | `/api/catalog/meta` | snapshot date, counts (included / excluded by reason), sources, licence, `stale` (> 3 days) |
+| GET | `/api/offers` | browse offers (`price_type`, `source`, `supplier`, `q`, `limit`, `offset`) |
+| GET | `/api/comuni?q=` | up to 20 comuni by name prefix (accent/case-insensitive), for autocomplete |
+| GET | `/api/sample` | the synthetic sample household's 12 months |
+| POST | `/api/parse` | multipart `.xlsx` in the legacy format → consumption profiles (max 2 MB) |
+| POST | `/api/compare` | 12 months of kWh (+ optional F1/F2/F3), `residency`, `istat_comune`, `committed_power_kw`, `scenario`, `filters`, `top_n` → ranked offers + assumptions |
+
+`/api/compare`, `/api/offers` and `/api/catalog/meta` return 503 until a
+catalogue is loaded. Every compare response carries the assumptions (Italian
+statement, period, PUN months used or substituted, band-split source,
+scenario, cost label) and the catalogue snapshot date. `rank` and
+`delta_vs_best_eur` are computed over all eligible offers, before the
+`filters` are applied. Validation errors are `422` with
+`{"detail": [{"field", "message"}]}` in Italian. The OpenAPI schema is
+committed as `openapi.json` (`make openapi` refreshes it; a test fails when
+it is stale) and the frontend generates its types from it.
+
+Hardening: body limits (compare 64 KB, upload 2 MB) enforced before reading
+the body, an in-memory per-IP rate limit (60 req/min, compare 20/min;
+`/api/health` exempt), security headers (CSP, `X-Frame-Options: DENY`,
+`nosniff`, `Referrer-Policy`), CORS off unless configured, and a generic 500
+handler that logs only the exception type.
+
+Configuration (environment variables):
+
+| Variable | Default | Meaning |
+|---|---|---|
+| `BESTBILL_CATALOG_PATH` | – | Local `catalog.sqlite` (dev/tests); takes precedence over the release |
+| `BESTBILL_REPO` | `leonardoburalli/bestbill` | GitHub repo holding the catalogue release |
+| `BESTBILL_RELEASE_TAG` | `catalog-latest` | Release tag with `catalog.sqlite`, `manifest.json`, `retailers.csv` |
+| `GITHUB_TOKEN` | – | Read-only token; only needed while the repo is private |
+| `BESTBILL_CACHE_DIR` | system temp dir | Where the downloaded catalogue is cached |
+| `BESTBILL_REFRESH_HOURS` | `6` | How often to check the release for a newer catalogue |
+| `BESTBILL_TRUST_PROXY` | off | `1`: rate-limit by the first `X-Forwarded-For` entry (behind Render) |
+| `BESTBILL_CORS_ORIGINS` | empty | Comma-separated allowed origins (production is same-origin) |
+
+Without `BESTBILL_CATALOG_PATH` the app downloads the release assets at
+startup (it starts serving `/api/health` right away, with `catalog_loaded:
+false`, until the download finishes), verifies the `sha256` from
+`manifest.json`, swaps the file in atomically, and re-checks the asset's
+`updated_at` every `BESTBILL_REFRESH_HOURS`. If a refresh fails, the last good
+catalogue keeps serving and a warning is logged.
+
+## Deploy the API to Render
+
+The repo ships a `Dockerfile` and a `render.yaml` Blueprint (one free web
+service, `bestbill-api`, Frankfurt, health check `/api/health`, auto-deploy
+from `main`).
+
+1. **Create the token** (only while the repository is private; skip if it's
+   public): GitHub → Settings → Developer settings → Personal access tokens →
+   *Fine-grained tokens* → Generate new token. Resource owner: you; *Only
+   select repositories* → `leonardoburalli/bestbill`; Repository permissions →
+   **Contents: Read-only**; pick a sensible expiry. Copy the token.
+2. On [dashboard.render.com](https://dashboard.render.com): **New → Blueprint**,
+   connect GitHub and select this repository. Render reads `render.yaml`.
+3. When prompted for the `sync: false` variables, set **`GITHUB_TOKEN`** to the
+   token from step 1, and leave `BESTBILL_CORS_ORIGINS` empty (the frontend
+   is same-origin through the Vercel rewrite).
+4. Click **Apply**. Once deployed, check `https://<service>.onrender.com/api/health`
+   (`catalog_loaded` turns `true` after the first download) and
+   `/api/docs`.
+
+Free-plan caveats: the service spins down after ~15 minutes without traffic,
+and the next request takes about 30–60 s (cold start, plus the catalogue
+download because the free plan has no persistent disk). The frontend should
+ping `/api/health` and show a "waking up" state. Publishing a new catalogue
+with `make catalog-publish` needs no redeploy: running instances pick it up
+within `BESTBILL_REFRESH_HOURS`, and a restart fetches it immediately.
+
 ## Data & privacy
 
 - `Input/` and `Output/` are local, gitignored folders for your own workbook
@@ -186,7 +282,7 @@ users can see how fresh the data is.
 - The ARERA catalogue is public reference data (offers, PUN), refreshed as a
   daily snapshot; see `PROVENANCE.md` for licence, attribution and what's
   transformed. Consumption data is never stored or logged, in the CLI or
-  later phases' API.
+  the API.
 
 ## Repository layout
 
@@ -195,13 +291,16 @@ src/bestbill/
 ├── core/          # models, band splitting, the pure cost engine
 ├── arera/         # ARERA importer: codes, policy, placet/mlibero/indices, fetch
 ├── catalog/       # build/validate catalog.sqlite + manifest.json, read-only store
+├── api/           # FastAPI app: routes, schemas, catalogue loader, middleware
+├── geo.py         # ISTAT comuni -> provincia -> regione lookup and search
 ├── io/excel.py     # legacy Tariffario/Storico Excel reader
 ├── data/sample.xlsx  # synthetic sample household
 └── cli.py         # command-line interface (compare, catalog build/fetch)
 scripts/make_sample.py  # regenerates data/sample.xlsx
+scripts/make_comuni.py  # regenerates data/comuni.csv from ISTAT
+scripts/export_openapi.py  # writes openapi.json (make openapi)
 tests/             # pytest suite + tests/fixtures/arera (trimmed real samples, CC-BY 4.0)
 ```
 
-See `PLAN.md` for the full architecture and roadmap (FastAPI backend, React
-frontend), `docs/arera-data.md` for the ARERA code tables and observed
+See `PLAN.md` for the full architecture and roadmap (React frontend), `docs/arera-data.md` for the ARERA code tables and observed
 findings, and `PROVENANCE.md` for data sources, licence and attribution.
