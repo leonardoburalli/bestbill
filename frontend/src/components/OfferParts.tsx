@@ -1,5 +1,5 @@
 import { describeBreakEven } from '../lib/breakEven'
-import { formatDate, formatEur, formatEurPerKwh } from '../lib/format'
+import { ALL_IN_HINT, formatDate, formatEnergyPrice, formatEur, formatEurPerKwh } from '../lib/format'
 import { normalizeOfferUrl } from '../lib/url'
 import type { Discount, OfferSource, PriceType, ResultItem } from '../types'
 import { ExternalIcon } from './icons'
@@ -113,7 +113,8 @@ export function OfferDetails({ item, id }: { item: ResultItem; id: string }) {
           </div>
         </dl>
         <p className="mt-2 text-[0.8rem] text-ink-soft">
-          Costo effettivo: {formatEurPerKwh(item.eur_per_kwh_effective)}.
+          Prezzo energia: {formatEnergyPrice(item.energy_price_eur_kwh, item.energy_price_kind)}.{' '}
+          Costo medio tutto incluso: {formatEurPerKwh(item.eur_per_kwh_effective)}. {ALL_IN_HINT}
         </p>
       </div>
 

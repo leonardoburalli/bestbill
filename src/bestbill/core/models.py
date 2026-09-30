@@ -620,6 +620,12 @@ class OfferResult(BaseModel):
     cost_eur: float
     delta_vs_best_eur: float
     eur_per_kwh_effective: float
+    #: Advertised unit energy price (€/kWh, before VAT): consumption-weighted
+    #: listed price for fixed offers, or spread over PUN for variable offers.
+    #: Excludes discounts, fixed fees, per-kWh extras, dispatching, power fee
+    #: and losses (and the PUN index itself).
+    energy_price_eur_kwh: float
+    energy_price_kind: Literal["fixed", "pun_spread"]
     rank: int = Field(ge=1)
     break_even_pun_eur_kwh: float | None = None
     #: Why ``break_even_pun_eur_kwh`` is (or isn't) set -- see

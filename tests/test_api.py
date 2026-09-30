@@ -291,6 +291,8 @@ def test_compare_happy_path(client):
     top = body["results"][0]
     assert top["delta_vs_best_eur"] == 0
     assert set(top["breakdown"]) >= {"energy", "fixed_fees", "total"}
+    assert isinstance(top["energy_price_eur_kwh"], float)
+    assert top["energy_price_kind"] in {"fixed", "pun_spread"}
     assert top["supplier_name_source"] in {"arera", "placet", "domain", "vat"}
     a = body["assumptions"]
     assert a["cost_label"] == "costo materia energia (IVA esclusa)"

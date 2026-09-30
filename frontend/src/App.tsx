@@ -113,7 +113,7 @@ export default function App() {
         onGoInput={() => setStep('input')}
         onGoResults={() => setStep('results')}
       />
-      <main id="main" className="mx-auto w-full max-w-5xl flex-1 px-4 py-8 sm:px-6 sm:py-12">
+      <main id="main" className={`mx-auto w-full flex-1 px-4 py-8 sm:px-6 sm:py-12 ${step === 'results' ? 'max-w-6xl' : 'max-w-5xl'}`}>
         {step === 'input' ? (
           <ConsumptionStep cf={cf} search={search} api={api} onSubmit={submit} summaryRef={summaryRef} />
         ) : (

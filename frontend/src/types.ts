@@ -146,6 +146,8 @@ export interface Discount {
   duration_months: number | null
 }
 
+export type EnergyPriceKind = 'fixed' | 'pun_spread'
+
 export interface ResultItem {
   offer_id: string
   rank: number
@@ -161,7 +163,11 @@ export interface ResultItem {
   valid_to: string | null
   cost_eur: number
   delta_vs_best_eur: number
+  /** Total cost ÷ kWh: includes CCV, dispatching and other costs. */
   eur_per_kwh_effective: number
+  /** Advertised energy unit price (before discounts, no fixed fees). For 'pun_spread' it is only the spread over PUN. */
+  energy_price_eur_kwh: number
+  energy_price_kind: EnergyPriceKind
   breakdown: CostBreakdown
   break_even_pun_eur_kwh: number | null
   break_even_status: BreakEvenStatus | null

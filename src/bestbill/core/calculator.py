@@ -270,6 +270,34 @@ def _energy_cost(
     return energy_cost
 
 
+def _energy_price_eur_kwh(
+    offer: Offer, monthly_band_kwh: list[dict[str, float]], total_kwh: float
+) -> float:
+    """Advertised unit energy price: consumption-weighted listed price (fixed
+    offers) or spread over PUN (variable offers), using the same band split
+    and consumption tiers as :func:`_energy_cost`, but BEFORE losses,
+    discounts, fixed fees, per-kWh extras, dispatching and power fees. For
+    variable offers the PUN index is not included.
+    """
+    if total_kwh <= 0:
+        return 0.0
+    table = (
+        offer.energy_price_eur_kwh
+        if offer.price_type is PriceType.FIXED
+        else offer.spread_eur_kwh
+    )
+    tiers = (
+        offer.energy_price_tiers_eur_kwh
+        if offer.price_type is PriceType.FIXED
+        else offer.spread_tiers_eur_kwh
+    )
+    amount = sum(
+        policy.band_value_eur(table[band], tiers.get(band), kwh)
+        for band, kwh in _annual_band_kwh(monthly_band_kwh).items()
+    )
+    return amount / total_kwh
+
+
 def _offer_breakdown(
     offer: Offer,
     monthly_band_kwh: list[dict[str, float]],
@@ -534,6 +562,12 @@ def compare(
                 cost_eur=cost,
                 delta_vs_best_eur=cost - best_cost,
                 eur_per_kwh_effective=cost / total_kwh if total_kwh > 0 else 0.0,
+                energy_price_eur_kwh=_energy_price_eur_kwh(
+                    offer, offer_band_kwh[offer.id], total_kwh
+                ),
+                energy_price_kind=(
+                    "fixed" if offer.price_type is PriceType.FIXED else "pun_spread"
+                ),
                 rank=rank,
                 break_even_pun_eur_kwh=break_even,
                 break_even_status=break_even_status,

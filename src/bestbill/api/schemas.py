@@ -231,6 +231,12 @@ class ResultItem(BaseModel):
     cost_eur: float
     delta_vs_best_eur: float
     eur_per_kwh_effective: float
+    energy_price_eur_kwh: float = Field(
+        description="Advertised unit energy price (EUR/kWh, ex VAT): weighted "
+        "listed price (fixed) or spread over PUN (pun_spread); excludes "
+        "discounts, fixed fees, extras, dispatching, power fee and losses."
+    )
+    energy_price_kind: Literal["fixed", "pun_spread"]
     breakdown: CostBreakdown
     break_even_pun_eur_kwh: float | None
     break_even_status: BreakEvenStatus | None

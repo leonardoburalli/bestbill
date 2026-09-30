@@ -1,4 +1,4 @@
-import { formatEur, formatEurPerKwh, formatEurPerMonth, formatEurPerYear } from '../lib/format'
+import { ALL_IN_HINT, formatEnergyPrice, formatEur, formatEurPerKwh, formatEurPerMonth, formatEurPerYear } from '../lib/format'
 import type { ResultItem } from '../types'
 import { TrophyIcon } from './icons'
 import { BreakEvenText, OfferBadges, OfferFlags, OfferLink } from './OfferParts'
@@ -36,7 +36,17 @@ export default function BestOffer({ item, next }: { item: ResultItem; next?: Res
           <p className="mt-1 text-sm text-ink-soft">
             stima per i prossimi 12 mesi · materia energia, IVA esclusa
           </p>
-          <p className="mt-1 text-sm font-medium tabular">{formatEurPerKwh(item.eur_per_kwh_effective)}</p>
+          <dl className="mt-3 grid grid-cols-2 gap-x-5 gap-y-1 text-left md:ml-auto md:max-w-[19rem]">
+            <div>
+              <dt className="text-xs text-ink-soft">Prezzo energia</dt>
+              <dd className="text-sm font-semibold tabular">{formatEnergyPrice(item.energy_price_eur_kwh, item.energy_price_kind)}</dd>
+            </div>
+            <div>
+              <dt className="text-xs text-ink-soft">Costo medio tutto incluso</dt>
+              <dd className="text-sm font-semibold tabular">{formatEurPerKwh(item.eur_per_kwh_effective)}</dd>
+            </div>
+          </dl>
+          <p className="mt-1 text-[0.8rem] leading-snug text-ink-soft md:ml-auto md:max-w-[19rem]">{ALL_IN_HINT}</p>
           <div className="mt-3 rounded-xl border border-forest/30 bg-card/70 px-3.5 py-2.5 text-left md:ml-auto md:max-w-[19rem]">
             <p className="text-sm font-semibold text-forest-dark">Quota fissa di vendita (CCV)</p>
             <p className="mt-0.5 flex flex-wrap items-baseline gap-x-2 tabular">
