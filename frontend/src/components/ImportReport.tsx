@@ -64,7 +64,7 @@ export default function ImportReport({
                   </p>
                   <p className="mt-1 text-ink-soft">
                     Sono evidenziati in giallo qui sotto: scrivi tu i kWh (per esempio dalla bolletta), oppure
-                    sposta il periodo con «Dal» e «Al» per usare mesi che hai già. Servono tutti e 12 i mesi.
+                    sposta il periodo con «Da» e «A» per usare mesi che hai già. Servono tutti e 12 i mesi.
                   </p>
                   <button type="button" onClick={goToFirst} className={`${btnSecondary} mt-2.5`}>
                     Vai al primo mese mancante

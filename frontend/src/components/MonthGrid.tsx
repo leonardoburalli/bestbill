@@ -59,7 +59,7 @@ export default function MonthGrid({ cf }: { cf: ConsumptionForm }) {
         <div className="flex flex-wrap items-end gap-x-3 gap-y-3">
           <div>
             <label htmlFor={fromId} className="mb-1 block text-sm text-ink-soft">
-              Dal
+              Da
             </label>
             <select
               id={fromId}
@@ -77,7 +77,7 @@ export default function MonthGrid({ cf }: { cf: ConsumptionForm }) {
           <span aria-hidden="true" className="pb-3 text-ink-soft">→</span>
           <div>
             <label htmlFor={toId} className="mb-1 block text-sm text-ink-soft">
-              Al
+              A
             </label>
             <select
               id={toId}
