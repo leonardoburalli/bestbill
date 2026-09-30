@@ -70,17 +70,6 @@ export interface SampleHousehold {
   months: SampleMonth[]
 }
 
-export interface ParsedProfile {
-  location: string
-  months: SampleMonth[]
-}
-
-export interface ParseResult {
-  profiles: ParsedProfile[]
-  /** Locations found in the file but not usable. */
-  skipped: string[]
-}
-
 // ── Comuni ─────────────────────────────────────────────────────────────────
 
 export interface Comune {

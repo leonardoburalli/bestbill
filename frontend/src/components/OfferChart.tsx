@@ -14,7 +14,7 @@ export default function OfferChart({ items }: { items: ResultItem[] }) {
     best: i === 0,
   }))
   const byId = new Map(data.map((d) => [d.id, d]))
-  const summary = `Grafico a barre: costo stimato delle prime ${data.length} offerte, da ${formatEur(data[0].cost)} a ${formatEur(data[data.length - 1].cost)}. I dati sono nella tabella qui sotto.`
+  const summary = `Grafico a barre: costo stimato nei prossimi 12 mesi delle prime ${data.length} offerte, da ${formatEur(data[0].cost)} a ${formatEur(data[data.length - 1].cost)}. I dati sono nella tabella qui sotto.`
 
   return (
     <div role="img" aria-label={summary} style={{ height: data.length * 40 + 36 }} className="w-full text-ink">
@@ -33,7 +33,7 @@ export default function OfferChart({ items }: { items: ResultItem[] }) {
           <Tooltip
             cursor={{ fill: 'rgb(29 90 68 / 0.07)' }}
             labelFormatter={(id) => byId.get(String(id))?.full ?? ''}
-            formatter={(v) => [formatEur(Number(v)), 'Costo stimato (IVA esclusa)']}
+            formatter={(v) => [formatEur(Number(v)), 'Costo stimato nei prossimi 12 mesi (IVA esclusa)']}
             contentStyle={{ borderRadius: 10, border: '1px solid #ddd5c3', fontSize: 13 }}
           />
           <Bar dataKey="cost" radius={[0, 6, 6, 0]} isAnimationActive={false}>

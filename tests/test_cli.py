@@ -24,12 +24,12 @@ def test_cli_end_to_end_writes_csv(tmp_path, capsys):
     csv_files = list(output_dir.glob("*_Esempio_comparison.csv"))
     assert len(csv_files) == 1
     content = csv_files[0].read_text(encoding="utf-8")
-    assert content.startswith("# Stima nell'ipotesi")
+    assert content.startswith("# Spesa ipotetica")
     assert "rank,supplier,name,price_type" in content
 
     captured = capsys.readouterr()
     assert "Confronto offerte per: Esempio" in captured.out
-    assert "Non è una previsione." in captured.out
+    assert "non una previsione." in captured.out
 
 
 def test_cli_unknown_location_returns_error_code(tmp_path):

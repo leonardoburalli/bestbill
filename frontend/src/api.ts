@@ -4,7 +4,6 @@ import type {
   CompareRequest,
   CompareResponse,
   Health,
-  ParseResult,
   SampleHousehold,
 } from './types'
 
@@ -107,9 +106,4 @@ export const api = {
       body: JSON.stringify(body),
       signal,
     }),
-  parse: (file: File, signal?: AbortSignal) => {
-    const form = new FormData()
-    form.append('file', file) // field name per routes.py; browser sets multipart boundary
-    return request<ParseResult>('/api/parse', { method: 'POST', body: form, signal })
-  },
 }

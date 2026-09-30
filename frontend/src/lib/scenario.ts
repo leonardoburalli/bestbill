@@ -12,11 +12,11 @@ const it = (n: number, d = 2) =>
 export function describeScenario(s: Scenario): string {
   switch (s.kind) {
     case 'historical':
-      return 'PUN storico mese per mese'
+      return 'PUN uguale a quello del periodo, mese per mese'
     case 'scaled': {
       const pct = Math.round((s.factor - 1) * 100)
-      if (pct === 0) return 'PUN storico (×1)'
-      return `PUN storico ${pct > 0 ? '+' : '−'}${it(Math.abs(pct), 0)}% (×${it(s.factor)})`
+      if (pct === 0) return 'PUN uguale a quello del periodo'
+      return `PUN del periodo ${pct > 0 ? '+' : '−'}${it(Math.abs(pct), 0)}% (×${it(s.factor)})`
     }
     case 'flat':
       return `PUN costante a ${s.value.toLocaleString('it-IT', { minimumFractionDigits: 4, maximumFractionDigits: 4 })} €/kWh`

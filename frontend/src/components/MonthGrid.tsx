@@ -1,5 +1,13 @@
 import { useId } from 'react'
-import { buildMonths, formatMonthLong, monthOptions } from '../lib/months'
+import {
+  buildMonths,
+  endFromStart,
+  endMonthOptions,
+  formatMonthLong,
+  lastCompleteMonth,
+  startFromEnd,
+  startMonthOptions,
+} from '../lib/months'
 import { parsePastedValues } from '../lib/consumption'
 import { formatKwh } from '../lib/format'
 import { CheckIcon } from './icons'
@@ -13,15 +21,24 @@ const BAND_FIELDS: { key: 'f1' | 'f2' | 'f3'; label: string }[] = [
   { key: 'f3', label: 'F3' },
 ]
 
+const cap = (s: string) => s.charAt(0).toUpperCase() + s.slice(1)
+
+/** Le opzioni proposte più il valore corrente (se fuori elenco), dal più recente. */
+const withCurrent = (opts: string[], current: string) =>
+  (opts.includes(current) ? opts : [...opts, current]).sort().reverse()
+
 export default function MonthGrid({ cf }: { cf: ConsumptionForm }) {
-  const { form, check, mapped, attempted, patch, setCell, setCells } = cf
+  const { form, check, mapped, attempted, patch, setCell, setCells, setPeriod } = cf
   const months = buildMonths(form.start)
-  const selectId = useId()
+  const fromId = useId()
+  const toId = useId()
+  const periodHelpId = useId()
   const bandsHelpId = useId()
 
-  const opts = monthOptions()
-  if (!opts.includes(form.start)) opts.push(form.start)
-  opts.sort().reverse()
+  const end = endFromStart(form.start)
+  const fromOpts = withCurrent(startMonthOptions(), form.start)
+  const toOpts = withCurrent(endMonthOptions(), end)
+  const importedSet = form.imported ? new Set(form.imported.map((m) => m.month)) : null
 
   const focusField = (i: number, f: CellField) =>
     document.getElementById(`${f}-${i}`)?.focus()
@@ -35,36 +52,53 @@ export default function MonthGrid({ cf }: { cf: ConsumptionForm }) {
     )
   }
 
-  const last = months[11]
-
   return (
     <div>
-      <div className="flex flex-wrap items-end gap-x-6 gap-y-3">
-        <div>
-          <label htmlFor={selectId} className="mb-1.5 block text-sm font-semibold">
-            Periodo dei 12 mesi
-          </label>
-          <select
-            id={selectId}
-            value={form.start}
-            onChange={(e) => patch({ start: e.target.value })}
-            className={`${inputBase} ${inputBorder(false)} min-w-[16rem] pr-8`}
-          >
-            {opts.map((ym) => {
-              const end = buildMonths(ym)[11]
-              return (
+      <fieldset aria-describedby={periodHelpId}>
+        <legend className="mb-1.5 text-sm font-semibold">Periodo dei consumi (12 mesi)</legend>
+        <div className="flex flex-wrap items-end gap-x-3 gap-y-3">
+          <div>
+            <label htmlFor={fromId} className="mb-1 block text-sm text-ink-soft">
+              Dal
+            </label>
+            <select
+              id={fromId}
+              value={form.start}
+              onChange={(e) => setPeriod(e.target.value)}
+              className={`${inputBase} ${inputBorder(false)} min-w-[11.5rem] pr-8`}
+            >
+              {fromOpts.map((ym) => (
                 <option key={ym} value={ym}>
-                  da {formatMonthLong(ym)} a {formatMonthLong(end)}
+                  {cap(formatMonthLong(ym))}
                 </option>
-              )
-            })}
-          </select>
+              ))}
+            </select>
+          </div>
+          <span aria-hidden="true" className="pb-3 text-ink-soft">→</span>
+          <div>
+            <label htmlFor={toId} className="mb-1 block text-sm text-ink-soft">
+              Al
+            </label>
+            <select
+              id={toId}
+              value={end}
+              onChange={(e) => setPeriod(startFromEnd(e.target.value))}
+              className={`${inputBase} ${inputBorder(false)} min-w-[11.5rem] pr-8`}
+            >
+              {toOpts.map((ym) => (
+                <option key={ym} value={ym}>
+                  {cap(formatMonthLong(ym))}
+                </option>
+              ))}
+            </select>
+          </div>
         </div>
-        <p className="pb-2.5 text-sm text-ink-soft">
-          Mese per mese, da <strong className="font-semibold text-ink">{formatMonthLong(form.start)}</strong> a{' '}
-          <strong className="font-semibold text-ink">{formatMonthLong(last)}</strong>.
+        <p id={periodHelpId} className="mt-2 max-w-xl text-sm leading-relaxed text-ink-soft">
+          Sono sempre 12 mesi di fila: se cambi uno dei due, si sposta anche l'altro. L'ultimo mese che puoi
+          scegliere è {formatMonthLong(lastCompleteMonth())}, l'ultimo concluso. I valori dei mesi che restano
+          nel periodo si mantengono.
         </p>
-      </div>
+      </fieldset>
 
       <label className="mt-5 flex cursor-pointer items-start gap-3 rounded-xl border border-line bg-paper px-4 py-3">
         <input
@@ -98,15 +132,21 @@ export default function MonthGrid({ cf }: { cf: ConsumptionForm }) {
           const kwhErrId = `kwh-${i}-err`
           const bandsErrId = `bands-${i}-err`
           const label = formatMonthLong(ym)
+          const notInFile = importedSet !== null && !importedSet.has(ym) && c.kwh.trim() === ''
           return (
             <li
               key={ym}
+              data-not-in-file={notInFile ? 'true' : undefined}
+              data-idx={i}
               className={`grid items-start gap-x-3 gap-y-2 ${
                 form.useBands ? 'grid-cols-[8.5rem_1fr] sm:grid-cols-[9.5rem_11rem_1fr]' : 'grid-cols-[8.5rem_1fr]'
-              }`}
+              } ${notInFile ? '-mx-2 rounded-lg border border-amber-line bg-amber-soft px-2 py-1.5' : ''}`}
             >
               <label htmlFor={`kwh-${i}`} className="pt-2.5 font-medium first-letter:uppercase">
                 {label}
+                {notInFile && (
+                  <span className="block text-xs font-semibold leading-tight text-amber-ink">Non è nel file</span>
+                )}
               </label>
               <div>
                 <div className="relative">
@@ -177,8 +217,8 @@ export default function MonthGrid({ cf }: { cf: ConsumptionForm }) {
 
       <p className="mt-5 flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1 border-t border-dashed border-line pt-4 text-sm text-ink-soft" aria-live="polite">
         <span>
-          Mesi compilati: <strong className="tabular text-ink">{check.filled}</strong> su 12. Puoi scrivere 0 per un
-          mese senza consumi.
+          Mesi compilati: <strong className="tabular text-ink">{check.filled}</strong> su 12. Scrivi 0 per un mese
+          senza consumi.
         </span>
         <span>
           Totale: <strong className="tabular text-base text-ink">{formatKwh(check.totalKwh)}</strong>

@@ -12,7 +12,6 @@ const mocked = vi.hoisted(() => ({
   sample: vi.fn(),
   comuni: vi.fn<(q: string, s?: AbortSignal) => Promise<Comune[]>>(),
   compare: vi.fn<(b: CompareRequest, s?: AbortSignal) => Promise<CompareResponse>>(),
-  parse: vi.fn(),
 }))
 // Absolute path: a relative '../api' specifier isn't matched by vi.mock here.
 vi.mock('/src/api.ts', async (orig) => ({

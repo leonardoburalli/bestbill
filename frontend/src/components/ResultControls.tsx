@@ -91,11 +91,11 @@ export default function ResultControls({
 
         <div>
           <Segmented<Mode>
-            legend="Prezzo dell'energia all'ingrosso (PUN)"
+            legend="Se il PUN nei prossimi 12 mesi…"
             name="f-scenario"
             value={mode}
             options={[
-              { value: 'historical', label: 'Storico' },
+              { value: 'historical', label: 'Ripete il periodo' },
               { value: 'scaled', label: 'Più alto o più basso' },
               { value: 'flat', label: 'Valore fisso' },
             ]}
@@ -106,13 +106,15 @@ export default function ResultControls({
             }}
           />
           <p id={helpId} className="mt-2 max-w-md text-sm leading-relaxed text-ink-soft">
-            Cambia solo il costo delle offerte a prezzo variabile. Quelle a prezzo fisso restano uguali.
+            Il PUN è il prezzo all'ingrosso dell'energia. «Ripete il periodo» vuol dire che, mese per mese,
+            segue lo stesso andamento del periodo indicato. Cambia solo il costo delle offerte a prezzo
+            variabile: quelle a prezzo fisso restano uguali.
           </p>
 
           {mode === 'scaled' && (
             <div className="mt-3">
               <label htmlFor={pctId} className="block text-sm font-semibold">
-                Di quanto cambia il PUN rispetto allo storico
+                Se il PUN nei prossimi 12 mesi cambiasse, di quanto rispetto al periodo indicato?
               </label>
               <div className="mt-1.5 flex flex-wrap items-start gap-2">
                 <div className="relative w-36">
@@ -139,7 +141,7 @@ export default function ResultControls({
           {mode === 'flat' && (
             <div className="mt-3">
               <label htmlFor={flatId} className="block text-sm font-semibold">
-                PUN medio in tutti i mesi
+                Se il PUN nei prossimi 12 mesi fosse in media pari a
               </label>
               <div className="mt-1.5 flex flex-wrap items-start gap-2">
                 <div className="relative w-44">

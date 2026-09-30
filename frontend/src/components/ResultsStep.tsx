@@ -68,7 +68,7 @@ export default function ResultsStep({
       ? 'Non è stato possibile completare il confronto.'
       : data
         ? data.results.length > 0
-          ? `Trovate ${data.total_matching} offerte. La più economica è ${data.results[0].name} di ${data.results[0].supplier}, ${formatEur(data.results[0].cost_eur)}.`
+          ? `Trovate ${data.total_matching} offerte. Per i prossimi 12 mesi la più economica è ${data.results[0].name} di ${data.results[0].supplier}, ${formatEur(data.results[0].cost_eur)}.`
           : 'Nessuna offerta trovata con questi criteri.'
         : ''
 
@@ -77,11 +77,11 @@ export default function ResultsStep({
       <div className="flex flex-wrap items-end justify-between gap-x-6 gap-y-3">
         <div className="max-w-2xl">
           <h1 id="step-heading" tabIndex={-1} className="focus:outline-none font-display text-3xl font-semibold leading-tight tracking-tight sm:text-4xl">
-            Le offerte per i tuoi consumi
+            Quanto spenderesti nei prossimi 12 mesi
           </h1>
           <p className="mt-2 text-[0.95rem] leading-relaxed text-ink-soft">
-            {formatKwh(summary.totalKwh)} in 12 mesi ({formatMonthShort(summary.start)} – {formatMonthShort(summary.end)}
-            ), {summary.residency === 'resident' ? 'residente' : 'non residente'},{' '}
+            Se consumassi come tra {formatMonthShort(summary.start)} e {formatMonthShort(summary.end)} (
+            {formatKwh(summary.totalKwh)} in 12 mesi), {summary.residency === 'resident' ? 'residente' : 'non residente'},{' '}
             {summary.powerKw.toLocaleString('it-IT')} kW
             {summary.comune ? `, ${summary.comune}` : ''}.
           </p>
@@ -165,7 +165,9 @@ export default function ResultsStep({
                   <h3 id="h-chart" className="font-display text-lg font-semibold">
                     Le prime {Math.min(10, data.results.length)} a confronto
                   </h3>
-                  <p className="mb-3 text-sm text-ink-soft">Costo stimato in 12 mesi, IVA esclusa. Le barre partono da zero.</p>
+                  <p className="mb-3 text-sm text-ink-soft">
+                    Spesa stimata nei prossimi 12 mesi, se consumassi come nel periodo indicato. IVA esclusa. Le barre partono da zero.
+                  </p>
                   <Suspense fallback={<div className="h-64 animate-pulse rounded-xl bg-paper-deep/60" role="status"><span className="sr-only">Carico il grafico…</span></div>}>
                     <OfferChart items={data.results} />
                   </Suspense>

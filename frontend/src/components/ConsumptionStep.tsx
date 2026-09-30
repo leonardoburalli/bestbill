@@ -4,6 +4,7 @@ import { formatDate } from '../lib/format'
 import { buildMonths, formatMonthLong } from '../lib/months'
 import DataShortcuts from './DataShortcuts'
 import HouseholdFields from './HouseholdFields'
+import ImportReport from './ImportReport'
 import MonthGrid from './MonthGrid'
 import StatusBanner from './StatusBanner'
 import { ArrowRightIcon } from './icons'
@@ -25,9 +26,13 @@ export default function ConsumptionStep({
   onSubmit: () => void
   summaryRef: RefObject<HTMLDivElement | null>
 }) {
-  const { check, mapped, attempted, note } = cf
+  const { check, mapped, attempted, note, report } = cf
   const ready = api.status === 'ready'
   const months = buildMonths(cf.form.start)
+  // Mesi dei 12 scelti che non sono nel file, e tra questi quelli ancora da compilare a mano.
+  const imported = cf.form.imported ? new Set(cf.form.imported.map((m) => m.month)) : null
+  const absent = imported ? months.filter((m) => !imported.has(m)) : []
+  const pending = absent.filter((m) => !cf.form.cells[months.indexOf(m)].kwh.trim())
 
   // Elenco dei problemi da mostrare in cima dopo un tentativo di invio
   const problems: { href: string; text: string }[] = []
@@ -49,11 +54,11 @@ export default function ConsumptionStep({
     <div className="animate-rise space-y-6">
       <div className="max-w-2xl">
         <h1 id="step-heading" tabIndex={-1} className="focus:outline-none font-display text-4xl font-semibold leading-[1.1] tracking-tight sm:text-5xl">
-          Quale offerta luce ti sarebbe costata meno?
+          Quanto spenderesti nei prossimi 12 mesi con ciascuna offerta luce?
         </h1>
         <p className="mt-4 text-lg leading-relaxed text-ink-soft">
-          Inserisci i consumi degli ultimi 12 mesi e ti mostriamo, tra le offerte disponibili oggi, quali
-          avrebbero avuto il costo più basso per la tua famiglia. Gratuito, senza registrazione.
+          Indica quanta luce hai consumato in un anno. Calcoliamo quanto spenderesti nei prossimi 12 mesi con
+          ciascuna offerta disponibile oggi, se consumassi allo stesso modo. Gratuito, senza registrazione.
         </p>
         {api.status === 'ready' && api.meta && (
           <p className="mt-3 text-sm text-ink-soft">
@@ -75,10 +80,11 @@ export default function ConsumptionStep({
       >
         <SectionCard
           headingId="h-consumi"
-          title="I tuoi consumi"
-          description="Ti bastano i kWh mensili che trovi in bolletta o nell'area clienti del tuo fornitore."
+          title="I tuoi consumi di riferimento"
+          description="Ti servono i kWh consumati mese per mese in 12 mesi già passati. Li importi da Portale Consumi oppure li copi dalle bollette o dall'area clienti del tuo fornitore."
         >
           <DataShortcuts cf={cf} />
+          {report && <ImportReport report={report} absent={absent} pending={pending} />}
           {note && (
             <Notice tone="ok" role="status" className="mt-4">
               {note}
@@ -129,8 +135,9 @@ export default function ConsumptionStep({
         <div className="flex flex-col items-start gap-3 rounded-2xl border border-forest-line bg-forest-soft p-5 sm:flex-row sm:items-center sm:justify-between sm:p-6">
           <p className="max-w-md text-sm leading-relaxed text-ink-soft">
             Il confronto riguarda solo il costo della <strong className="text-ink">materia energia</strong>, IVA
-            esclusa. Non comprende costi di rete, oneri di sistema e imposte. È una stima sul passato, non una
-            previsione.
+            esclusa. Non comprende costi di rete, oneri di sistema e imposte. È una simulazione: ipotizza che nei
+            prossimi 12 mesi tu consumi come nel periodo indicato e, per le offerte a prezzo variabile, che il
+            PUN ripeta lo stesso andamento. Non è una previsione.
           </p>
           <div className="w-full sm:w-auto">
             <button type="submit" disabled={!ready} className={`${btnPrimary} w-full sm:w-auto`}>

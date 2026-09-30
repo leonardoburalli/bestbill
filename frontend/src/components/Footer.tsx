@@ -43,7 +43,7 @@ export default function Footer({ meta }: { meta: CatalogMeta | null }) {
           </p>
           <p className="mt-2">
             Il confronto riguarda solo la materia energia: non include IVA, costi di rete, oneri di sistema e
-            imposte, uguali per tutte le offerte. È una stima sui consumi passati, non una previsione.
+            imposte, uguali per tutte le offerte. È una simulazione dei prossimi 12 mesi che parte dai tuoi consumi passati: non è una previsione.
           </p>
         </section>
 
@@ -53,7 +53,7 @@ export default function Footer({ meta }: { meta: CatalogMeta | null }) {
           </h2>
           <p>
             I consumi che inserisci vengono usati in memoria per fare il calcolo e non vengono salvati né
-            registrati. Il sito non usa cookie né strumenti di analisi e non richiede registrazione.
+            registrati. Il file CSV di Portale Consumi viene letto nel tuo browser e non lascia il tuo dispositivo. Il sito non usa cookie né strumenti di analisi e non richiede registrazione.
           </p>
         </section>
       </div>

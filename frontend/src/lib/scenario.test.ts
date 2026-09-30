@@ -8,7 +8,7 @@ describe('scenario', () => {
     expect(SCENARIO_LIMITS.value.minExclusive).toBe(false)
   })
   it('describes', () => {
-    expect(describeScenario({ kind: 'historical' })).toMatch(/storico/)
+    expect(describeScenario({ kind: 'historical' })).toMatch(/uguale a quello del periodo/)
     expect(describeScenario({ kind: 'scaled', factor: 1.2 })).toContain('+20%')
     expect(describeScenario({ kind: 'scaled', factor: 0.8 })).toContain('−20%')
     expect(describeScenario({ kind: 'flat', value: 0.12 })).toContain('0,1200 €/kWh')

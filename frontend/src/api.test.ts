@@ -31,14 +31,6 @@ describe('api', () => {
     expect(init.method).toBe('POST')
     expect(init.headers).toEqual({ 'Content-Type': 'application/json' })
   })
-  it('parse posts multipart with field "file" and no manual content-type', async () => {
-    fetchMock.mockResolvedValue(json({ profiles: [], skipped: [] }))
-    await api.parse(new File(['x'], 'a.xlsx'))
-    const init = fetchMock.mock.calls[0][1]
-    expect(init.body).toBeInstanceOf(FormData)
-    expect((init.body as FormData).get('file')).toBeInstanceOf(File)
-    expect(init.headers).toBeUndefined()
-  })
   it('422 → fieldErrors', async () => {
     fetchMock.mockResolvedValue(json({ detail: [{ field: 'consumption.3.kwh', message: 'Troppo alto' }] }, 422))
     const err = await api.compare({} as never).catch((e) => e)

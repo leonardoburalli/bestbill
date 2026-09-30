@@ -39,13 +39,16 @@ function OfferTable({ items, open, toggle, roomy }: ListProps & { roomy: boolean
     <div className="overflow-hidden rounded-2xl border border-line bg-card">
       <table className="w-full border-collapse text-left">
         <caption className="sr-only">
-          Offerte ordinate per costo stimato, dalla più economica. Costo materia energia, IVA esclusa.
+          Offerte ordinate per costo stimato nei prossimi 12 mesi, dalla più economica. Costo materia energia, IVA esclusa.
         </caption>
         <thead>
           <tr className="border-b border-line bg-paper text-xs uppercase tracking-wide text-ink-soft">
             <th scope="col" className="w-14 px-4 py-3 font-semibold">Pos.</th>
             <th scope="col" className="px-3 py-3 font-semibold">Offerta</th>
-            <th scope="col" className="px-3 py-3 text-right font-semibold">Costo stimato</th>
+            <th scope="col" className="px-3 py-3 text-right font-semibold">
+              Costo stimato
+              <span className="block text-[0.7rem] font-normal normal-case tracking-normal">nei prossimi 12 mesi</span>
+            </th>
             {roomy && <th scope="col" className="px-3 py-3 text-right font-semibold">Rispetto alla migliore</th>}
             {roomy && <th scope="col" className="px-3 py-3 text-right font-semibold">€/kWh</th>}
             <th scope="col" className="px-3 py-3 text-right font-semibold">

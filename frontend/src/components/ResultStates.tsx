@@ -36,7 +36,7 @@ export function ResultsSkeleton({ slow }: { slow: boolean }) {
         <p className="mt-2 max-w-prose leading-relaxed text-ink-soft">
           {slow
             ? 'Ci sta mettendo più del solito: il servizio gratuito era in pausa e si sta riattivando. Di solito bastano 30–60 secondi, poi il calcolo è rapido. Non chiudere la pagina.'
-            : 'Calcolo il costo di ogni offerta sui tuoi 12 mesi di consumi. Dovrebbero bastare pochi secondi.'}
+            : 'Calcolo quanto spenderesti nei prossimi 12 mesi con ogni offerta, se consumassi come nel periodo indicato. Dovrebbero bastare pochi secondi.'}
         </p>
         <div className="mt-4 h-1 overflow-hidden rounded-full bg-paper-deep">
           <div className="h-full w-1/4 animate-sweep rounded-full bg-forest" />

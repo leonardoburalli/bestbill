@@ -17,7 +17,7 @@ export default function BestOffer({ item, next }: { item: ResultItem; next?: Res
       <p className="flex items-center gap-2 text-sm font-semibold uppercase tracking-wide text-forest-dark">
         <TrophyIcon size={18} />
         <span id="h-best">
-          {overall ? 'L\'offerta che sarebbe costata meno' : `La migliore con questi filtri (in assoluto è la n. ${item.rank})`}
+          {overall ? 'L\'offerta che ti costerebbe meno nei prossimi 12 mesi' : `La migliore con questi filtri (in assoluto è la n. ${item.rank})`}
         </span>
       </p>
 
@@ -34,7 +34,7 @@ export default function BestOffer({ item, next }: { item: ResultItem; next?: Res
         <div className="md:text-right">
           <p className="font-display text-4xl font-semibold tabular sm:text-5xl">{formatEur(item.cost_eur)}</p>
           <p className="mt-1 text-sm text-ink-soft">
-            stima in 12 mesi · materia energia, IVA esclusa
+            stima per i prossimi 12 mesi · materia energia, IVA esclusa
           </p>
           <p className="mt-1 text-sm font-medium tabular">{formatEurPerKwh(item.eur_per_kwh_effective)}</p>
           <div className="mt-3 rounded-xl border border-forest/30 bg-card/70 px-3.5 py-2.5 text-left md:ml-auto md:max-w-[19rem]">

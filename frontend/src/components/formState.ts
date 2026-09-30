@@ -7,26 +7,55 @@ import { useCallback, useMemo, useState } from 'react'
 import type { FieldError } from '../api'
 import { POWER_MAX, parseItalianNumber, toRequestMonths, validateRows } from '../lib/consumption'
 import type { MonthRow } from '../lib/consumption'
-import { buildMonths, defaultStartMonth } from '../lib/months'
+import { buildMonths, endFromStart, lastCompleteMonth, startFromEnd } from '../lib/months'
+import { applyImport, suggestEndMonth } from '../lib/portaleConsumi'
+import type { ImportedMonth, parsePortaleConsumiCsv } from '../lib/portaleConsumi'
 import type { CompareFilters, CompareRequest, Comune, Residency, Scenario } from '../types'
 
 export type Cell = { kwh: string; f1: string; f2: string; f3: string }
 export type CellField = keyof Cell
 
 export interface FormState {
+  /** Primo mese (YYYY-MM) dei 12 mesi di riferimento. L'ultimo è sempre start + 11. */
   start: string
   cells: Cell[]
+  /** Valori dei mesi usciti dal periodo: tornano se si riporta il periodo indietro. */
+  stash: Record<string, Cell>
+  /** Mesi letti da Portale Consumi (tutti, anche fuori dai 12 mostrati). */
+  imported: ImportedMonth[] | null
   useBands: boolean
   residency: Residency
   power: string
 }
 
 const emptyCell = (): Cell => ({ kwh: '', f1: '', f2: '', f3: '' })
+const isEmptyCell = (c: Cell) => !c.kwh.trim() && !c.f1.trim() && !c.f2.trim() && !c.f3.trim()
+const cellFromRow = (r: MonthRow): Cell => ({
+  kwh: numToText(r.kwh),
+  f1: numToText(r.f1),
+  f2: numToText(r.f2),
+  f3: numToText(r.f3),
+})
+
+/** Riepilogo dell'ultima importazione da Portale Consumi, mostrato sopra la tabella. */
+export interface ImportReport {
+  fileName: string
+  /** Mesi presenti nel file. */
+  totalMonths: number
+  filled: number
+  /** Mesi (YYYY-MM) dei 12 scelti che non sono nel file. */
+  missing: string[]
+  warnings: string[]
+  first: string
+  last: string
+}
 
 export function initialForm(): FormState {
   return {
-    start: defaultStartMonth(),
+    start: startFromEnd(lastCompleteMonth()),
     cells: Array.from({ length: 12 }, emptyCell),
+    stash: {},
+    imported: null,
     useBands: false,
     residency: 'resident',
     power: '3',
@@ -169,7 +198,14 @@ export function useConsumptionForm() {
   const [form, setForm] = useState<FormState>(initialForm)
   const [serverErrors, setServerErrors] = useState<FieldError[]>([])
   const [attempted, setAttempted] = useState(false)
-  const [note, setNote] = useState<string | null>(null)
+  const [note, setNoteRaw] = useState<string | null>(null)
+  const [report, setReport] = useState<ImportReport | null>(null)
+
+  /** Un solo messaggio alla volta sopra la tabella. */
+  const setNote = useCallback((n: string | null) => {
+    setNoteRaw(n)
+    if (n) setReport(null)
+  }, [])
 
   const patch = useCallback((p: Partial<FormState>) => {
     setForm((f) => ({ ...f, ...p }))
@@ -187,22 +223,88 @@ export function useConsumptionForm() {
     [setCells],
   )
 
-  /** Carica 12 mesi provenienti da esempio o da Excel. */
+  /**
+   * Sposta il periodo. I valori si tengono per mese di calendario: i mesi che restano nel
+   * periodo conservano ciò che c'è scritto, i mesi nuovi si riempiono dal file importato (se c'è)
+   * oppure restano vuoti. I mesi che escono vengono messi da parte e tornano se si torna indietro.
+   */
+  const setPeriod = useCallback((start: string) => {
+    setForm((f) => {
+      if (start === f.start) return f
+      const kept: Record<string, Cell> = { ...f.stash }
+      buildMonths(f.start).forEach((m, i) => {
+        if (!isEmptyCell(f.cells[i])) kept[m] = f.cells[i]
+        else delete kept[m]
+      })
+      const fromFile = f.imported ? applyImport(f.imported, endFromStart(start), f.useBands).rows : []
+      const byMonth = new Map(fromFile.map((r) => [r.month, r]))
+      const months = buildMonths(start)
+      const cells = months.map((m) => {
+        if (kept[m]) return kept[m]
+        const r = byMonth.get(m)
+        return r && r.kwh !== null ? cellFromRow(r) : emptyCell()
+      })
+      const stash = { ...kept }
+      months.forEach((m) => delete stash[m])
+      return { ...f, start, cells, stash }
+    })
+    setServerErrors([])
+  }, [])
+
+  /** Carica 12 mesi provenienti dall'esempio. */
   const applyRows = useCallback(
     (data: { start: string; rows: MonthRow[]; hasBands: boolean }, why: string) => {
       setForm((f) => ({
         ...f,
         start: data.start || f.start,
         useBands: data.hasBands,
+        stash: {},
+        imported: null,
         cells: Array.from({ length: 12 }, (_, i) => {
           const r = data.rows[i]
-          return r
-            ? { kwh: numToText(r.kwh), f1: numToText(r.f1), f2: numToText(r.f2), f3: numToText(r.f3) }
-            : emptyCell()
+          return r ? cellFromRow(r) : emptyCell()
         }),
       }))
       setServerErrors([])
       setNote(why)
+    },
+    [setNote],
+  )
+
+  /** Dopo un incolla: i valori sono a mano, non più quelli del file. */
+  const forgetImport = useCallback(() => {
+    setForm((f) => ({ ...f, imported: null, stash: {} }))
+    setReport(null)
+  }, [])
+
+  /** Importa dal file di Portale Consumi. Restituisce un messaggio se non c'è nulla di utilizzabile. */
+  const importPortale = useCallback(
+    (parsed: ReturnType<typeof parsePortaleConsumiCsv>, fileName: string): string | null => {
+      const end = suggestEndMonth(parsed.months)
+      if (!end) {
+        return 'Nel file ci sono solo mesi non ancora conclusi. Servono consumi di mesi già passati.'
+      }
+      const res = applyImport(parsed.months, end, parsed.hasBands)
+      setForm((f) => ({
+        ...f,
+        start: startFromEnd(end),
+        useBands: parsed.hasBands,
+        stash: {},
+        imported: parsed.months,
+        cells: res.rows.map((r) => (r.kwh !== null ? cellFromRow(r) : emptyCell())),
+      }))
+      setServerErrors([])
+      setNoteRaw(null)
+      setReport({
+        fileName,
+        totalMonths: parsed.months.length,
+        filled: res.filled,
+        missing: res.missing,
+        warnings: parsed.warnings,
+        first: parsed.months[0].month,
+        last: parsed.months[parsed.months.length - 1].month,
+      })
+      return null
     },
     [],
   )
@@ -215,7 +317,11 @@ export function useConsumptionForm() {
     patch,
     setCell,
     setCells,
+    setPeriod,
     applyRows,
+    importPortale,
+    forgetImport,
+    report,
     check,
     serverErrors,
     setServerErrors,

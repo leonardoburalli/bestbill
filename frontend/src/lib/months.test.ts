@@ -1,4 +1,5 @@
-import { buildMonths, defaultStartMonth, formatMonthLong, formatMonthShort, monthOptions } from './months'
+import { buildMonths, defaultStartMonth, formatMonthLong, formatMonthShort, monthOptions,
+  lastCompleteMonth, startFromEnd, endFromStart, endMonthOptions, startMonthOptions } from './months'
 
 describe('months', () => {
   it('defaultStartMonth: 12 months ending last complete month', () => {
@@ -24,5 +25,22 @@ describe('months', () => {
     expect(o[0]).toBe(defaultStartMonth(today))
     expect(o[1]).toBe('2025-08')
     expect(o[12]).toBe('2024-09')
+  })
+  it('lastCompleteMonth / startFromEnd / endFromStart', () => {
+    expect(lastCompleteMonth(new Date(2026, 0, 5))).toBe('2025-12')
+    expect(lastCompleteMonth(new Date(2026, 8, 30))).toBe('2026-08')
+    expect(startFromEnd('2026-08')).toBe('2025-09')
+    expect(startFromEnd('2026-01')).toBe('2025-02')
+    expect(endFromStart('2025-09')).toBe('2026-08')
+    expect(endFromStart(startFromEnd('2026-03'))).toBe('2026-03')
+  })
+  it('endMonthOptions / startMonthOptions', () => {
+    const today = new Date(2026, 8, 30)
+    const e = endMonthOptions(today)
+    expect(e).toHaveLength(36)
+    expect(e[0]).toBe('2026-08')
+    expect(e[1]).toBe('2026-07')
+    expect(startMonthOptions(today)).toEqual(e.map(startFromEnd))
+    expect(endMonthOptions(today, 1)).toHaveLength(12)
   })
 })

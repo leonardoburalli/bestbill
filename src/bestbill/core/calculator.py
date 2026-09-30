@@ -119,25 +119,23 @@ def _scenario_statement(
         "Non include costi di rete, oneri di sistema e imposte: sono uguali "
         "per ogni fornitore e non dipendono dalla scelta dell'offerta."
     )
+    lead = (
+        "Spesa ipotetica nei prossimi 12 mesi, se consumassi come in "
+        f"{period} e, per le offerte a prezzo variabile, il PUN"
+    )
+    tail = f"È una simulazione, non una previsione. {base}"
     if isinstance(scenario, Historical):
-        return (
-            "Stima nell'ipotesi che nei prossimi 12 mesi i tuoi consumi e il PUN "
-            f"siano identici a quelli di {period}. Non è una previsione. {base}"
-        )
+        return f"{lead} ripetesse l'andamento di quel periodo. {tail}"
     if isinstance(scenario, Scaled):
         pct = round((scenario.factor - 1) * 100)
         sign = "+" if pct >= 0 else ""
         return (
-            "Stima nell'ipotesi che nei prossimi 12 mesi i tuoi consumi siano "
-            f"identici a quelli di {period}, con un PUN storico modificato "
-            f"({sign}{pct}%). Non è una previsione. {base}"
+            f"{lead} ripetesse l'andamento di quel periodo con una variazione "
+            f"del {sign}{pct}%. {tail}"
         )
     if isinstance(scenario, Flat):
-        return (
-            "Stima nell'ipotesi che nei prossimi 12 mesi i tuoi consumi siano "
-            f"identici a quelli di {period}, con un PUN costante di "
-            f"{scenario.value:.3f} €/kWh. Non è una previsione. {base}"
-        )
+        value = f"{scenario.value:.3f}".replace(".", ",")
+        return f"{lead} restasse costante a {value} €/kWh. {tail}"
     raise ValueError(f"unsupported scenario: {scenario!r}")
 
 

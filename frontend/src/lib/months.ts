@@ -17,10 +17,26 @@ function parts(s: string): [number, number] {
   return [Number(y), Number(m) - 1]
 }
 
+/** Previous calendar month (YYYY-MM): the latest month that is fully over. */
+export function lastCompleteMonth(today: Date = new Date()): string {
+  return ym(today.getFullYear(), today.getMonth() - 1)
+}
+
+/** end − 11 months */
+export function startFromEnd(end: string): string {
+  const [y, m] = parts(end)
+  return ym(y, m - 11)
+}
+
+/** start + 11 months */
+export function endFromStart(start: string): string {
+  const [y, m] = parts(start)
+  return ym(y, m + 11)
+}
+
 /** Start (YYYY-MM) of the 12 months ending with the last complete month. */
 export function defaultStartMonth(today: Date = new Date()): string {
-  // last complete month = previous month; start = 11 months before that
-  return ym(today.getFullYear(), today.getMonth() - 12)
+  return startFromEnd(lastCompleteMonth(today))
 }
 
 export function buildMonths(start: string): string[] {
@@ -40,8 +56,16 @@ export function formatMonthLong(s: string): string {
   return `${LONG[m]} ${y}`
 }
 
-/** Selectable start months, newest first. The newest one is defaultStartMonth. */
-export function monthOptions(today: Date = new Date(), yearsBack = 3): string[] {
-  const newest = parts(defaultStartMonth(today))
-  return Array.from({ length: yearsBack * 12 }, (_, i) => ym(newest[0], newest[1] - i))
+/** Selectable end months, newest first. The newest one is lastCompleteMonth. */
+export function endMonthOptions(today: Date = new Date(), yearsBack = 3): string[] {
+  const [y, m] = parts(lastCompleteMonth(today))
+  return Array.from({ length: yearsBack * 12 }, (_, i) => ym(y, m - i))
 }
+
+/** Selectable start months, newest first (each is end − 11 months). */
+export function startMonthOptions(today: Date = new Date(), yearsBack = 3): string[] {
+  return endMonthOptions(today, yearsBack).map(startFromEnd)
+}
+
+/** @deprecated alias of startMonthOptions */
+export const monthOptions = startMonthOptions

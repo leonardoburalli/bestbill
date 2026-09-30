@@ -24,20 +24,20 @@ export default function AssumptionsStatement({
         <span className="mt-1 text-forest"><InfoIcon size={22} /></span>
         <div className="min-w-0">
           <h2 id="h-ipotesi" className="font-display text-xl font-semibold">
-            Cosa significa questa stima
+            Cosa stiamo stimando
           </h2>
           <p className="mt-2 leading-relaxed">{a.statement}</p>
           <p className="mt-2 leading-relaxed">
             <strong className="font-semibold">Importi: {a.cost_label}.</strong>{' '}
             <span className="text-ink-soft">
               Non comprendono IVA, costi di rete e gestione del contatore, oneri di sistema e imposte. È una
-              stima retrospettiva, non una previsione di quanto pagherai.
+              simulazione dei prossimi 12 mesi, non una previsione di quanto pagherai davvero.
             </span>
           </p>
 
           <dl className="mt-4 grid grid-cols-2 gap-x-6 gap-y-3 text-sm">
             <div>
-              <dt className="text-ink-soft">Periodo dei consumi e del PUN</dt>
+              <dt className="text-ink-soft">Periodo di riferimento (consumi e PUN)</dt>
               <dd className="font-medium">
                 {formatMonthLong(ymOf(a.period_start))} – {formatMonthLong(ymOf(a.period_end))}
               </dd>
@@ -66,7 +66,7 @@ export default function AssumptionsStatement({
 
           {substituted.length > 0 && (
             <p className="mt-3 rounded-lg border border-amber-line bg-amber-soft px-3 py-2 text-sm leading-relaxed">
-              Per {substituted.map((m) => formatMonthLong(ymOf(m))).join(', ')} il PUN definitivo non era ancora
+              Nel periodo di riferimento, per {substituted.map((m) => formatMonthLong(ymOf(m))).join(', ')} il PUN definitivo non era ancora
               disponibile: abbiamo usato un valore sostitutivo.
             </p>
           )}
@@ -77,9 +77,11 @@ export default function AssumptionsStatement({
             </summary>
             <div className="mt-2 space-y-2 text-sm leading-relaxed text-ink-soft">
               <p>
-                Prendiamo i tuoi 12 mesi di consumi e calcoliamo quanto avrebbe speso ciascuna offerta attiva
-                oggi, con le regole pubblicate da ARERA. Per le offerte a prezzo variabile usiamo il PUN
-                (il prezzo all'ingrosso dell'energia) mese per mese, oppure lo scenario che scegli sotto.
+                Prendiamo i tuoi 12 mesi di consumi e calcoliamo quanto spenderesti nei prossimi 12 mesi con
+                ciascuna offerta attiva oggi, se consumassi allo stesso modo, con le regole pubblicate da ARERA.
+                Per le offerte a prezzo variabile ipotizziamo che il PUN (il prezzo all'ingrosso dell'energia)
+                ripeta, mese per mese, lo stesso andamento del periodo di riferimento, oppure usiamo lo scenario
+                che scegli sotto.
               </p>
               <p>
                 <strong className="text-ink">Incluso:</strong> prezzo dell'energia, quote fisse del fornitore,
@@ -92,8 +94,8 @@ export default function AssumptionsStatement({
                 condizioni (per esempio la domiciliazione) sono elencati a parte e non sono sottratti.
               </p>
               <p>
-                Il risultato dice cosa sarebbe successo nel passato: non sappiamo come si muoveranno consumi e
-                prezzi nei prossimi mesi.
+                È una simulazione, non una previsione: consumi e prezzi dei prossimi mesi potranno essere
+                diversi. Le offerte a prezzo fisso non dipendono dall'andamento del PUN.
               </p>
             </div>
           </details>

@@ -1,22 +1,22 @@
 import { useId, useRef, useState } from 'react'
 import { api, ApiError } from '../api'
-import { useParseUpload } from '../hooks'
 import { parsePastedValues, rowsFromApi } from '../lib/consumption'
+import { PortaleConsumiError, readPortaleConsumiFile } from '../lib/portaleConsumi'
 import { formatMonthLong } from '../lib/months'
 import type { SampleMonth } from '../types'
-import { ClipboardIcon, HomeIcon, UploadIcon } from './icons'
-import { btnPrimary, btnSecondary, inputBase, inputBorder, Notice, Spinner } from './ui'
+import { ClipboardIcon, HomeIcon, LockIcon, UploadIcon } from './icons'
+import { btnSecondary, inputBase, inputBorder, Notice, Spinner } from './ui'
 import { numToText } from './formState'
 import type { ConsumptionForm } from './formState'
 
-type Panel = 'paste' | 'excel' | 'sample' | null
+type Panel = 'portale' | 'paste' | 'sample' | null
 
 export default function DataShortcuts({ cf }: { cf: ConsumptionForm }) {
   const [open, setOpen] = useState<Panel>(null)
 
   const tabs: { id: Exclude<Panel, null>; label: string; hint: string; icon: React.ReactNode }[] = [
+    { id: 'portale', label: 'Importa da Portale Consumi', hint: 'file CSV, letto sul tuo dispositivo', icon: <UploadIcon /> },
     { id: 'paste', label: 'Incolla 12 valori', hint: 'da bolletta o foglio di calcolo', icon: <ClipboardIcon /> },
-    { id: 'excel', label: 'Carica un file Excel', hint: 'formato .xlsx', icon: <UploadIcon /> },
     { id: 'sample', label: 'Prova con un esempio', hint: 'una famiglia di prova', icon: <HomeIcon /> },
   ]
 
@@ -50,8 +50,8 @@ export default function DataShortcuts({ cf }: { cf: ConsumptionForm }) {
 
       {open && (
         <div id={`panel-${open}`} className="mt-3 rounded-xl border border-line bg-paper p-4 animate-rise">
+          {open === 'portale' && <PortaleImport cf={cf} onDone={() => setOpen(null)} />}
           {open === 'paste' && <PasteBox cf={cf} onDone={() => setOpen(null)} />}
-          {open === 'excel' && <ExcelUpload cf={cf} onDone={() => setOpen(null)} />}
           {open === 'sample' && <SampleLoader cf={cf} onDone={() => setOpen(null)} />}
         </div>
       )}
@@ -83,6 +83,7 @@ function PasteBox({ cf, onDone }: { cf: ConsumptionForm; onDone: () => void }) {
     }
     setError(null)
     cf.setCells((cells) => cells.map((c, i) => ({ ...c, kwh: numToText(values[i]) })))
+    cf.forgetImport()
     cf.setNote(`Ho inserito i 12 valori incollati a partire da ${formatMonthLong(cf.form.start)}. Controllali qui sotto.`)
     setText('')
     onDone()
@@ -119,109 +120,118 @@ function PasteBox({ cf, onDone }: { cf: ConsumptionForm; onDone: () => void }) {
   )
 }
 
-/* ── Excel ─────────────────────────────────────────────────────────────── */
+/* ── Portale Consumi ───────────────────────────────────────────────────── */
 
-function ExcelUpload({ cf, onDone }: { cf: ConsumptionForm; onDone: () => void }) {
-  const up = useParseUpload()
-  const [pick, setPick] = useState(0)
+const PORTALE_URL = 'https://www.consumienergia.it'
+
+const STEPS: React.ReactNode[] = [
+  <>
+    Vai su{' '}
+    <a href={PORTALE_URL} target="_blank" rel="noopener noreferrer" className="font-semibold text-forest underline decoration-forest-line decoration-2 underline-offset-2 hover:text-forest-dark">
+      Portale Consumi<span className="sr-only"> (si apre in una nuova scheda)</span>
+    </a>{' '}
+    e accedi con SPID o CIE.
+  </>,
+  <>Apri la sezione dei consumi di <strong>luce</strong>.</>,
+  <>Scarica o esporta lo storico in formato <strong>CSV</strong>.</>,
+  <>Caricalo qui sotto: ti compiliamo i mesi al posto tuo.</>,
+]
+
+function PortaleImport({ cf, onDone }: { cf: ConsumptionForm; onDone: () => void }) {
   const fileRef = useRef<HTMLInputElement>(null)
-  const legend = useId()
+  const [busy, setBusy] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+  const [dragging, setDragging] = useState(false)
   const fileId = useId()
+  const hintId = useId()
 
-  const profiles = up.result?.profiles ?? []
-
-  const use = () => {
-    const p = profiles[pick]
-    if (!p) return
-    cf.applyRows(rowsFromApi(p.months), `Consumi caricati dal file Excel (${p.location}). Controllali qui sotto.`)
-    up.reset()
-    if (fileRef.current) fileRef.current.value = ''
-    onDone()
+  const handle = async (file: File | undefined) => {
+    if (!file) return
+    setBusy(true)
+    setError(null)
+    try {
+      const parsed = await readPortaleConsumiFile(file)
+      const problem = cf.importPortale(parsed, file.name)
+      if (problem) {
+        setError(problem)
+      } else {
+        onDone()
+      }
+    } catch (e) {
+      setError(
+        e instanceof PortaleConsumiError
+          ? e.message
+          : 'Non sono riuscito a leggere il file. Controlla che sia il CSV scaricato da Portale Consumi.',
+      )
+    } finally {
+      setBusy(false)
+      if (fileRef.current) fileRef.current.value = ''
+    }
   }
 
   return (
     <div>
-      <label htmlFor={fileId} className="block text-sm font-semibold">
-        File Excel con lo storico dei consumi
-      </label>
+      <p className="text-sm font-semibold">Importa i consumi da Portale Consumi</p>
       <p className="mt-0.5 text-sm text-ink-soft">
-        File .xlsx fino a 2 MB, con un foglio «Storico_Località» per ogni punto di fornitura. Il file viene
-        letto al volo e non viene conservato.
+        Portale Consumi è il sito di Acquirente Unico dove trovi i consumi reali del tuo contatore.
       </p>
-      <input
-        ref={fileRef}
-        id={fileId}
-        type="file"
-        accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-        onChange={(e) => {
-          const f = e.target.files?.[0]
-          if (f) {
-            setPick(0)
-            up.upload(f)
-          }
+
+      <ol className="mt-3 grid gap-2 sm:grid-cols-2">
+        {STEPS.map((step, i) => (
+          <li key={i} className="flex items-start gap-3 rounded-lg border border-line bg-card px-3 py-2.5 text-[0.95rem] leading-snug">
+            <span className="mt-px grid size-6 shrink-0 place-items-center rounded-full bg-forest text-xs font-bold text-white tabular">
+              {i + 1}
+            </span>
+            <span>{step}</span>
+          </li>
+        ))}
+      </ol>
+
+      <label
+        htmlFor={fileId}
+        onDragOver={(e) => {
+          e.preventDefault()
+          setDragging(true)
         }}
-        className="mt-2 block w-full max-w-md cursor-pointer rounded-lg border border-field bg-card text-sm file:mr-3 file:cursor-pointer file:border-0 file:bg-forest file:px-4 file:py-2.5 file:font-semibold file:text-white hover:file:bg-forest-dark"
-      />
+        onDragLeave={() => setDragging(false)}
+        onDrop={(e) => {
+          e.preventDefault()
+          setDragging(false)
+          void handle(e.dataTransfer.files?.[0])
+        }}
+        className={`mt-4 flex cursor-pointer flex-col items-center gap-1.5 rounded-xl border-2 border-dashed px-4 py-6 text-center transition-colors has-[:focus-visible]:outline has-[:focus-visible]:outline-[3px] has-[:focus-visible]:outline-offset-2 has-[:focus-visible]:outline-focus ${
+          dragging ? 'border-forest bg-forest-soft' : 'border-field bg-card hover:border-forest hover:bg-forest-soft/60'
+        }`}
+      >
+        <span className="text-forest">{busy ? <Spinner size={26} /> : <UploadIcon size={26} />}</span>
+        <span className="font-semibold">{busy ? 'Leggo il file…' : 'Scegli il file CSV o trascinalo qui'}</span>
+        <span id={hintId} className="max-w-md text-sm text-ink-soft">
+          File .csv fino a 1 MB.
+        </span>
+        <input
+          ref={fileRef}
+          id={fileId}
+          type="file"
+          accept=".csv,text/csv"
+          aria-describedby={hintId}
+          onChange={(e) => void handle(e.target.files?.[0])}
+          className="sr-only"
+        />
+      </label>
+
+      <p className="mt-3 flex items-start gap-2 text-sm leading-relaxed text-ink-soft">
+        <span className="mt-0.5 shrink-0 text-forest"><LockIcon size={16} /></span>
+        <span>
+          <strong className="font-semibold text-ink">Il file resta sul tuo dispositivo.</strong> Lo leggiamo
+          direttamente nel browser: non viene caricato né inviato a nessun server.
+        </span>
+      </p>
 
       <div aria-live="polite" className="mt-3">
-        {up.status === 'loading' && (
-          <p className="flex items-center gap-2 text-sm text-ink-soft">
-            <Spinner /> Leggo il file…
-          </p>
-        )}
-        {up.status === 'error' && up.error && (
-          <Notice tone="error" role="alert" title="Non sono riuscito a leggere il file">
-            {up.error.status === 429
-              ? 'Troppe richieste in poco tempo: aspetta un minuto e riprova.'
-              : up.error.fieldErrors[0]?.message ?? up.error.message}
+        {error && (
+          <Notice tone="error" role="alert" title="Non posso usare questo file">
+            {error}
           </Notice>
-        )}
-        {up.status === 'success' && up.result && (
-          <div>
-            {profiles.length > 1 ? (
-              <fieldset>
-                <legend id={legend} className="text-sm font-semibold">
-                  Nel file ci sono {profiles.length} punti di fornitura: quale vuoi usare?
-                </legend>
-                <div className="mt-2 grid gap-2">
-                  {profiles.map((p, i) => (
-                    <label
-                      key={p.location + i}
-                      className="flex cursor-pointer items-center gap-3 rounded-lg border border-line bg-card px-3 py-2.5 has-[:checked]:border-forest has-[:checked]:bg-forest-soft"
-                    >
-                      <input
-                        type="radio"
-                        name="profile"
-                        checked={pick === i}
-                        onChange={() => setPick(i)}
-                        className="size-4 accent-forest"
-                      />
-                      <span className="font-medium">{p.location}</span>
-                      <span className="text-sm text-ink-soft">
-                        {formatMonthLong(p.months[0].month)} – {formatMonthLong(p.months[p.months.length - 1].month)}
-                      </span>
-                    </label>
-                  ))}
-                </div>
-              </fieldset>
-            ) : (
-              profiles[0] && (
-                <p className="text-sm">
-                  Trovato: <strong>{profiles[0].location}</strong>,{' '}
-                  {formatMonthLong(profiles[0].months[0].month)} –{' '}
-                  {formatMonthLong(profiles[0].months[profiles[0].months.length - 1].month)}.
-                </p>
-              )
-            )}
-            {up.result.skipped.length > 0 && (
-              <p className="mt-2 text-sm text-ink-soft">
-                Non utilizzabili (servono 12 mesi consecutivi): {up.result.skipped.join(', ')}.
-              </p>
-            )}
-            <button type="button" onClick={use} className={`${btnPrimary} mt-3`}>
-              Usa questi consumi
-            </button>
-          </div>
         )}
       </div>
     </div>
