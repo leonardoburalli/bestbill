@@ -73,7 +73,7 @@ export function BreakEvenText({ item }: { item: ResultItem }) {
 
 const BREAKDOWN: { key: keyof ResultItem['breakdown']; label: string; sign?: -1 }[] = [
   { key: 'energy', label: 'Energia' },
-  { key: 'fixed_fees', label: 'Quote fisse annuali' },
+  { key: 'fixed_fees', label: 'Quota fissa di vendita (CCV)' },
   { key: 'per_kwh_extras', label: 'Altri costi al kWh' },
   { key: 'power_fee', label: 'Quota potenza' },
   { key: 'dispatching', label: 'Dispacciamento' },

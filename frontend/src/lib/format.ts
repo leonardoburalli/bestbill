@@ -8,6 +8,9 @@ const MONTHS = ['gen', 'feb', 'mar', 'apr', 'mag', 'giu', 'lug', 'ago', 'set', '
 export const formatEur = (n: number) => eur.format(n)
 export const formatEurCompact = (n: number) => eurCompact.format(n)
 export const formatEurPerKwh = (n: number) => `${perKwh.format(n)} €/kWh`
+/** Fixed selling fee (CCV): "120,00 €/anno". Zero is shown as "0,00 €/anno". */
+export const formatEurPerYear = (n: number) => `${eur.format(n)}/anno`
+export const formatEurPerMonth = (n: number) => `${eur.format(n)}/mese`
 export const formatKwh = (n: number) => `${kwh.format(n)} kWh`
 
 /** "2026-09-29" → "29 set 2026" (local date, no UTC shift). */

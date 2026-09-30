@@ -4,7 +4,7 @@ import { buildResultsCsv } from './csv'
 const r = (p: Partial<ResultItem>): ResultItem => ({
   rank: 1, supplier: 'Acme; "Energia"', name: 'Offerta, uno', price_type: 'fixed', source: 'placet',
   cost_eur: 1234.5, delta_vs_best_eur: 0, eur_per_kwh_effective: 0.137, break_even_pun_eur_kwh: null,
-  one_off_fee_eur: 0, valid_to: '2026-12-31', url: 'https://a.it', ...p,
+  one_off_fee_eur: 0, breakdown: { fixed_fees: 120 } as ResultItem['breakdown'], valid_to: '2026-12-31', url: 'https://a.it', ...p,
 } as ResultItem)
 
 const assumptions = {
@@ -26,6 +26,16 @@ describe('buildResultsCsv', () => {
     expect(lines[1]).toContain(';1234,50;')
     expect(lines[1]).toContain(';0,1370;')
     expect(lines[2]).toContain(';-3,00;')
+  })
+  it('has a CCV column right after the cost column', () => {
+    const header = lines[0].slice(1).split(';')
+    const i = header.indexOf('CCV (€/anno)')
+    expect(i).toBe(header.indexOf('Costo (EUR)') + 1)
+    expect(lines[1]).toContain(';1234,50;120,00;0,00;')
+  })
+  it('writes a zero CCV as 0,00, not blank', () => {
+    const z = buildResultsCsv([r({ breakdown: { fixed_fees: 0 } as ResultItem['breakdown'] })], assumptions)
+    expect(z.split('\r\n')[1]).toContain(';1234,50;0,00;0,00;')
   })
   it('neutralises formulas in text', () => expect(lines[2]).toContain("'=HYPERLINK"))
   it('includes label, period and statement', () => {

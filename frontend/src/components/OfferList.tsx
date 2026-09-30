@@ -1,5 +1,5 @@
 import { Fragment, useState } from 'react'
-import { formatEur, formatEurPerKwh } from '../lib/format'
+import { formatEur, formatEurPerKwh, formatEurPerYear } from '../lib/format'
 import type { ResultItem } from '../types'
 import { ChevronDownIcon } from './icons'
 import { BreakEvenText, OfferBadges, OfferDetails, OfferFlags, OfferLink } from './OfferParts'
@@ -9,6 +9,8 @@ const deltaText = (n: number) => (n <= 0.005 ? 'Migliore in assoluto' : `+${form
 
 export default function OfferList({ items }: { items: ResultItem[] }) {
   const wide = useIsWide()
+  // Sotto i 1024px la tabella ha meno spazio: "Rispetto alla migliore" e €/kWh passano sotto il costo.
+  const roomy = useIsWide('(min-width: 1024px)')
   const [open, setOpen] = useState<Set<string>>(new Set())
   const toggle = (id: string) =>
     setOpen((s) => {
@@ -19,7 +21,7 @@ export default function OfferList({ items }: { items: ResultItem[] }) {
     })
 
   return wide ? (
-    <OfferTable items={items} open={open} toggle={toggle} />
+    <OfferTable items={items} open={open} toggle={toggle} roomy={roomy} />
   ) : (
     <OfferCards items={items} open={open} toggle={toggle} />
   )
@@ -31,7 +33,8 @@ interface ListProps {
   toggle: (id: string) => void
 }
 
-function OfferTable({ items, open, toggle }: ListProps) {
+function OfferTable({ items, open, toggle, roomy }: ListProps & { roomy: boolean }) {
+  const columns = roomy ? 7 : 5
   return (
     <div className="overflow-hidden rounded-2xl border border-line bg-card">
       <table className="w-full border-collapse text-left">
@@ -43,8 +46,11 @@ function OfferTable({ items, open, toggle }: ListProps) {
             <th scope="col" className="w-14 px-4 py-3 font-semibold">Pos.</th>
             <th scope="col" className="px-3 py-3 font-semibold">Offerta</th>
             <th scope="col" className="px-3 py-3 text-right font-semibold">Costo stimato</th>
-            <th scope="col" className="px-3 py-3 text-right font-semibold">Rispetto alla migliore</th>
-            <th scope="col" className="px-3 py-3 text-right font-semibold">€/kWh</th>
+            <th scope="col" className="px-3 py-3 text-right font-semibold">
+              <abbr title="Corrispettivo commercializzazione e vendita: quota fissa annuale, già inclusa nel costo" className="no-underline">CCV</abbr> / anno
+            </th>
+            {roomy && <th scope="col" className="px-3 py-3 text-right font-semibold">Rispetto alla migliore</th>}
+            {roomy && <th scope="col" className="px-3 py-3 text-right font-semibold">€/kWh</th>}
             <th scope="col" className="px-3 py-3 text-right font-semibold"><span className="sr-only">Dettagli e link</span></th>
           </tr>
         </thead>
@@ -66,9 +72,16 @@ function OfferTable({ items, open, toggle }: ListProps) {
                   <td className="px-3 py-4 text-right">
                     <span className="font-display text-xl font-semibold tabular">{formatEur(it.cost_eur)}</span>
                     <span className="block text-xs text-ink-soft">in 12 mesi</span>
+                    {!roomy && (
+                      <>
+                        <span className="mt-1.5 block text-xs tabular text-ink-soft">{deltaText(it.delta_vs_best_eur)}</span>
+                        <span className="block whitespace-nowrap text-xs tabular text-ink-soft">{formatEurPerKwh(it.eur_per_kwh_effective)}</span>
+                      </>
+                    )}
                   </td>
-                  <td className="px-3 py-4 text-right text-sm tabular text-ink-soft">{deltaText(it.delta_vs_best_eur)}</td>
-                  <td className="whitespace-nowrap px-3 py-4 text-right text-sm tabular">{formatEurPerKwh(it.eur_per_kwh_effective)}</td>
+                  <td className="whitespace-nowrap px-3 py-4 text-right text-sm font-medium tabular">{formatEur(it.breakdown.fixed_fees)}</td>
+                  {roomy && <td className="px-3 py-4 text-right text-sm tabular text-ink-soft">{deltaText(it.delta_vs_best_eur)}</td>}
+                  {roomy && <td className="whitespace-nowrap px-3 py-4 text-right text-sm tabular">{formatEurPerKwh(it.eur_per_kwh_effective)}</td>}
                   <td className="px-3 py-4 text-right">
                     <div className="flex flex-col items-end gap-2">
                       <button
@@ -89,7 +102,7 @@ function OfferTable({ items, open, toggle }: ListProps) {
                 {isOpen && (
                   <tr className="border-b border-line/70 bg-paper/70">
                     <td />
-                    <td colSpan={5} className="px-3 pb-6 pt-1">
+                    <td colSpan={columns - 1} className="px-3 pb-6 pt-1">
                       <OfferDetails item={it} id={detailId} />
                     </td>
                   </tr>
@@ -126,6 +139,10 @@ function OfferCards({ items, open, toggle }: ListProps) {
             </div>
             <div className="mt-2.5"><OfferBadges item={it} /></div>
             <dl className="mt-3 grid grid-cols-2 gap-3 border-t border-dashed border-line pt-3 text-sm">
+              <div>
+                <dt className="text-xs text-ink-soft">CCV (quota fissa di vendita)</dt>
+                <dd className="tabular font-medium">{formatEurPerYear(it.breakdown.fixed_fees)}</dd>
+              </div>
               <div>
                 <dt className="text-xs text-ink-soft">Rispetto alla migliore</dt>
                 <dd className="tabular font-medium">{deltaText(it.delta_vs_best_eur)}</dd>

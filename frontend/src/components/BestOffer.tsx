@@ -1,4 +1,4 @@
-import { formatEur, formatEurPerKwh } from '../lib/format'
+import { formatEur, formatEurPerKwh, formatEurPerMonth, formatEurPerYear } from '../lib/format'
 import type { ResultItem } from '../types'
 import { TrophyIcon } from './icons'
 import { BreakEvenText, OfferBadges, OfferFlags, OfferLink } from './OfferParts'
@@ -37,6 +37,16 @@ export default function BestOffer({ item, next }: { item: ResultItem; next?: Res
             stima in 12 mesi · materia energia, IVA esclusa
           </p>
           <p className="mt-1 text-sm font-medium tabular">{formatEurPerKwh(item.eur_per_kwh_effective)}</p>
+          <div className="mt-3 rounded-xl border border-forest/30 bg-card/70 px-3.5 py-2.5 text-left md:ml-auto md:max-w-[19rem]">
+            <p className="text-sm font-semibold text-forest-dark">Quota fissa di vendita (CCV)</p>
+            <p className="mt-0.5 flex flex-wrap items-baseline gap-x-2 tabular">
+              <span className="font-display text-2xl font-semibold">{formatEurPerYear(item.breakdown.fixed_fees)}</span>
+              <span className="text-sm text-ink-soft">≈ {formatEurPerMonth(item.breakdown.fixed_fees / 12)}</span>
+            </p>
+            <p className="mt-1 text-[0.8rem] leading-snug text-ink-soft">
+              Si paga ogni mese, anche se non consumi. È già compresa nel totale.
+            </p>
+          </div>
           {next && (
             <p className="mt-2 text-sm text-ink-soft">
               La successiva costerebbe{' '}

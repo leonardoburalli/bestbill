@@ -20,7 +20,7 @@ const row = (cells: Cell[]) => cells.map(cell).join(SEP)
 
 const HEADER = [
   'Posizione', 'Fornitore', 'Offerta', 'Tipo prezzo', 'Fonte',
-  'Costo (EUR)', 'Differenza dalla migliore (EUR)', 'Costo effettivo (EUR/kWh)',
+  'Costo (EUR)', 'CCV (€/anno)', 'Differenza dalla migliore (EUR)', 'Costo effettivo (EUR/kWh)',
   'PUN di pareggio (EUR/kWh)', 'Una tantum (EUR)', 'Valida fino al', 'Link',
 ]
 
@@ -30,7 +30,7 @@ export function buildResultsCsv(results: ResultItem[], assumptions: Assumptions)
     lines.push(
       row([
         r.rank, r.supplier, r.name, r.price_type === 'fixed' ? 'Fisso' : 'Variabile', r.source,
-        num(r.cost_eur, 2), num(r.delta_vs_best_eur, 2), num(r.eur_per_kwh_effective, 4),
+        num(r.cost_eur, 2), num(r.breakdown.fixed_fees, 2), num(r.delta_vs_best_eur, 2), num(r.eur_per_kwh_effective, 4),
         r.break_even_pun_eur_kwh === null ? null : num(r.break_even_pun_eur_kwh, 4),
         num(r.one_off_fee_eur, 2), r.valid_to, r.url,
       ]),
