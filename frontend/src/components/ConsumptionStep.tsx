@@ -57,7 +57,7 @@ export default function ConsumptionStep({
           Quanto spenderesti nei prossimi 12 mesi con ciascuna offerta luce?
         </h1>
         <p className="mt-4 text-lg leading-relaxed text-ink-soft">
-          Indica quanta luce hai consumato in un anno. Calcoliamo quanto spenderesti nei prossimi 12 mesi con
+          Indica quanta energia elettrica hai consumato in un anno. Calcoliamo quanto spenderesti nei prossimi 12 mesi con
           ciascuna offerta disponibile oggi, se consumassi allo stesso modo. Gratuito, senza registrazione.
         </p>
         {api.status === 'ready' && api.meta && (
