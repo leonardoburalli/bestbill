@@ -129,8 +129,9 @@ used, exactly as required by law.
 
 ## Snapshot cadence
 
-- **Daily**, via the `catalog` GitHub Action (`0 0 * * *` UTC, plus manual
-  `workflow_dispatch`).
+- **Manual**, from a local machine with `make catalog-publish`: the Portale
+  Offerte blocks GitHub/cloud servers (HTTP 403), so no scheduled job can
+  fetch it. The app shows the snapshot date and flags it when stale.
 - The catalogue holds **the current snapshot only** — there is no history,
   because an expired offer can't be activated anyway.
 - The frontend/API re-download the snapshot on start and periodically
