@@ -31,3 +31,6 @@ PLAN.md
 PLAN.v*.md
 
 *.tsbuildinfo
+
+# Local copy of the published catalogue (gh release download catalog-latest -D catalog-latest)
+/catalog-latest/
