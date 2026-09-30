@@ -1,4 +1,4 @@
-.PHONY: install test lint check smoke catalog catalog-publish
+.PHONY: install test lint check smoke catalog catalog-publish openapi
 
 install:
 	.cicd/install.sh
@@ -19,3 +19,6 @@ catalog:
 
 catalog-publish:
 	.cicd/publish-catalog.sh
+
+openapi:
+	uv run python scripts/export_openapi.py

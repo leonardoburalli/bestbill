@@ -1,0 +1,1622 @@
+{
+  "components": {
+    "schemas": {
+      "Assumptions": {
+        "additionalProperties": false,
+        "properties": {
+          "band_split_source": {
+            "enum": [
+              "user",
+              "standard"
+            ],
+            "title": "Band Split Source",
+            "type": "string"
+          },
+          "committed_power_kw": {
+            "default": 3.0,
+            "title": "Committed Power Kw",
+            "type": "number"
+          },
+          "cost_label": {
+            "default": "costo materia energia (IVA esclusa)",
+            "title": "Cost Label",
+            "type": "string"
+          },
+          "istat_comune": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Istat Comune"
+          },
+          "period_end": {
+            "format": "date",
+            "title": "Period End",
+            "type": "string"
+          },
+          "period_start": {
+            "format": "date",
+            "title": "Period Start",
+            "type": "string"
+          },
+          "pun_months_used": {
+            "additionalProperties": {
+              "type": "number"
+            },
+            "propertyNames": {
+              "format": "date"
+            },
+            "title": "Pun Months Used",
+            "type": "object"
+          },
+          "residency": {
+            "default": "resident",
+            "enum": [
+              "resident",
+              "non_resident"
+            ],
+            "title": "Residency",
+            "type": "string"
+          },
+          "scenario": {
+            "discriminator": {
+              "mapping": {
+                "flat": "#/components/schemas/Flat",
+                "historical": "#/components/schemas/Historical",
+                "scaled": "#/components/schemas/Scaled"
+              },
+              "propertyName": "kind"
+            },
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/Historical"
+              },
+              {
+                "$ref": "#/components/schemas/Scaled"
+              },
+              {
+                "$ref": "#/components/schemas/Flat"
+              }
+            ],
+            "title": "Scenario"
+          },
+          "statement": {
+            "title": "Statement",
+            "type": "string"
+          },
+          "substituted_pun_months": {
+            "items": {
+              "format": "date",
+              "type": "string"
+            },
+            "title": "Substituted Pun Months",
+            "type": "array"
+          }
+        },
+        "required": [
+          "period_start",
+          "period_end",
+          "pun_months_used",
+          "substituted_pun_months",
+          "band_split_source",
+          "scenario",
+          "statement"
+        ],
+        "title": "Assumptions",
+        "type": "object"
+      },
+      "BandStructure": {
+        "description": "How an offer's energy price is split across bands.",
+        "enum": [
+          "mono",
+          "f1f2f3",
+          "f1f23"
+        ],
+        "title": "BandStructure",
+        "type": "string"
+      },
+      "Body_parse_api_parse_post": {
+        "properties": {
+          "file": {
+            "contentMediaType": "application/octet-stream",
+            "description": ".xlsx, max 2 MB",
+            "title": "File",
+            "type": "string"
+          }
+        },
+        "required": [
+          "file"
+        ],
+        "title": "Body_parse_api_parse_post",
+        "type": "object"
+      },
+      "BreakEvenStatus": {
+        "description": "Classifies a variable offer's break-even PUN against the cheapest\neligible fixed offer (see ``bestbill.core.calculator._break_even_pun``):\n\n- ``CHEAPER_BELOW``: the normal case -- the variable offer is cheaper\n  than the best fixed offer for PUN values below the break-even point\n  (and more expensive above it).\n- ``NEVER_CHEAPER``: the break-even PUN is <= 0 -- the variable offer\n  is never cheaper than the best fixed offer at any non-negative PUN.\n- ``ALWAYS_CHEAPER``: the variable offer's cost slope (kWh × loss\n  multiplier) is <= 0, so it can't be compared as a break-even point;\n  in practice this only happens when there's no fixed offer to break\n  even against or the variable offer has zero/negative consumption\n  exposure -- kept for completeness, see the calculator docstring.",
+        "enum": [
+          "cheaper_below",
+          "never_cheaper",
+          "always_cheaper"
+        ],
+        "title": "BreakEvenStatus",
+        "type": "string"
+      },
+      "CatalogCounts": {
+        "properties": {
+          "excluded": {
+            "title": "Excluded",
+            "type": "integer"
+          },
+          "excluded_by_reason": {
+            "additionalProperties": {
+              "type": "integer"
+            },
+            "title": "Excluded By Reason",
+            "type": "object"
+          },
+          "included": {
+            "title": "Included",
+            "type": "integer"
+          },
+          "included_by_source": {
+            "additionalProperties": {
+              "type": "integer"
+            },
+            "title": "Included By Source",
+            "type": "object"
+          }
+        },
+        "required": [
+          "included",
+          "included_by_source",
+          "excluded",
+          "excluded_by_reason"
+        ],
+        "title": "CatalogCounts",
+        "type": "object"
+      },
+      "CatalogMeta": {
+        "properties": {
+          "age_days": {
+            "title": "Age Days",
+            "type": "integer"
+          },
+          "attribution": {
+            "title": "Attribution",
+            "type": "string"
+          },
+          "counts": {
+            "$ref": "#/components/schemas/CatalogCounts"
+          },
+          "licence": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Licence"
+          },
+          "snapshot_date": {
+            "format": "date",
+            "title": "Snapshot Date",
+            "type": "string"
+          },
+          "sources": {
+            "items": {
+              "$ref": "#/components/schemas/CatalogSource"
+            },
+            "title": "Sources",
+            "type": "array"
+          },
+          "stale": {
+            "description": "True when the snapshot is older than 3 days.",
+            "title": "Stale",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "snapshot_date",
+          "age_days",
+          "stale",
+          "counts",
+          "sources",
+          "attribution"
+        ],
+        "title": "CatalogMeta",
+        "type": "object"
+      },
+      "CatalogSource": {
+        "properties": {
+          "file_date": {
+            "anyOf": [
+              {
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "File Date"
+          },
+          "licence": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Licence"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Url"
+          }
+        },
+        "required": [
+          "name"
+        ],
+        "title": "CatalogSource",
+        "type": "object"
+      },
+      "CompareFilters": {
+        "additionalProperties": false,
+        "properties": {
+          "price_type": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/PriceType"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "source": {
+            "anyOf": [
+              {
+                "enum": [
+                  "placet",
+                  "mlibero"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source"
+          }
+        },
+        "title": "CompareFilters",
+        "type": "object"
+      },
+      "CompareRequest": {
+        "additionalProperties": false,
+        "description": "12 consecutive months of household consumption. Processed in memory\nand never stored or logged.",
+        "properties": {
+          "committed_power_kw": {
+            "default": 3.0,
+            "exclusiveMinimum": 0.0,
+            "maximum": 30.0,
+            "title": "Committed Power Kw",
+            "type": "number"
+          },
+          "consumption": {
+            "items": {
+              "$ref": "#/components/schemas/MonthInput"
+            },
+            "maxItems": 12,
+            "minItems": 12,
+            "title": "Consumption",
+            "type": "array"
+          },
+          "filters": {
+            "$ref": "#/components/schemas/CompareFilters"
+          },
+          "istat_comune": {
+            "anyOf": [
+              {
+                "pattern": "^\\d{6}$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "6-digit ISTAT comune code; needed to see area-restricted offers.",
+            "title": "Istat Comune"
+          },
+          "residency": {
+            "default": "resident",
+            "enum": [
+              "resident",
+              "non_resident"
+            ],
+            "title": "Residency",
+            "type": "string"
+          },
+          "scenario": {
+            "discriminator": {
+              "mapping": {
+                "flat": "#/components/schemas/Flat",
+                "historical": "#/components/schemas/Historical",
+                "scaled": "#/components/schemas/Scaled"
+              },
+              "propertyName": "kind"
+            },
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/Historical"
+              },
+              {
+                "$ref": "#/components/schemas/Scaled"
+              },
+              {
+                "$ref": "#/components/schemas/Flat"
+              }
+            ],
+            "title": "Scenario"
+          },
+          "top_n": {
+            "default": 50,
+            "maximum": 200.0,
+            "minimum": 1.0,
+            "title": "Top N",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "consumption"
+        ],
+        "title": "CompareRequest",
+        "type": "object"
+      },
+      "CompareResponse": {
+        "properties": {
+          "assumptions": {
+            "$ref": "#/components/schemas/Assumptions"
+          },
+          "excluded_by_reason": {
+            "additionalProperties": {
+              "type": "integer"
+            },
+            "title": "Excluded By Reason",
+            "type": "object"
+          },
+          "excluded_count": {
+            "title": "Excluded Count",
+            "type": "integer"
+          },
+          "results": {
+            "items": {
+              "$ref": "#/components/schemas/ResultItem"
+            },
+            "title": "Results",
+            "type": "array"
+          },
+          "snapshot_date": {
+            "format": "date",
+            "title": "Snapshot Date",
+            "type": "string"
+          },
+          "total_eligible": {
+            "description": "Offers eligible for this household.",
+            "title": "Total Eligible",
+            "type": "integer"
+          },
+          "total_matching": {
+            "description": "Eligible offers matching the filters.",
+            "title": "Total Matching",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "snapshot_date",
+          "assumptions",
+          "total_eligible",
+          "total_matching",
+          "results",
+          "excluded_count",
+          "excluded_by_reason"
+        ],
+        "title": "CompareResponse",
+        "type": "object"
+      },
+      "ComuneOut": {
+        "properties": {
+          "codice": {
+            "description": "6-digit ISTAT comune code.",
+            "title": "Codice",
+            "type": "string"
+          },
+          "nome": {
+            "title": "Nome",
+            "type": "string"
+          },
+          "regione": {
+            "title": "Regione",
+            "type": "string"
+          },
+          "sigla_provincia": {
+            "title": "Sigla Provincia",
+            "type": "string"
+          }
+        },
+        "required": [
+          "codice",
+          "nome",
+          "sigla_provincia",
+          "regione"
+        ],
+        "title": "ComuneOut",
+        "type": "object"
+      },
+      "CostBreakdown": {
+        "additionalProperties": false,
+        "description": "Decomposition of an offer's ``cost_eur`` into its ARERA-policy\nparts. ``energy + fixed_fees + per_kwh_extras + power_fee +\ndispatching + one_off - discounts == total`` (within floating-point\ntolerance) -- see ``bestbill.core.calculator`` and\n``docs/pricing-policy.md`` §7.",
+        "properties": {
+          "discounts": {
+            "title": "Discounts",
+            "type": "number"
+          },
+          "dispatching": {
+            "title": "Dispatching",
+            "type": "number"
+          },
+          "energy": {
+            "title": "Energy",
+            "type": "number"
+          },
+          "fixed_fees": {
+            "title": "Fixed Fees",
+            "type": "number"
+          },
+          "one_off": {
+            "title": "One Off",
+            "type": "number"
+          },
+          "per_kwh_extras": {
+            "title": "Per Kwh Extras",
+            "type": "number"
+          },
+          "power_fee": {
+            "title": "Power Fee",
+            "type": "number"
+          },
+          "total": {
+            "title": "Total",
+            "type": "number"
+          }
+        },
+        "required": [
+          "energy",
+          "fixed_fees",
+          "per_kwh_extras",
+          "power_fee",
+          "dispatching",
+          "one_off",
+          "discounts",
+          "total"
+        ],
+        "title": "CostBreakdown",
+        "type": "object"
+      },
+      "Discount": {
+        "additionalProperties": false,
+        "description": "A commercial discount (Sconto). Unconditional first-12-month\ndiscounts are priced into the estimate by the engine (see\n``bestbill.arera.policy``); conditional discounts are kept for display\nonly.",
+        "properties": {
+          "amount": {
+            "title": "Amount",
+            "type": "number"
+          },
+          "applies_before_vat": {
+            "default": true,
+            "title": "Applies Before Vat",
+            "type": "boolean"
+          },
+          "conditional": {
+            "title": "Conditional",
+            "type": "boolean"
+          },
+          "consumption_from_kwh": {
+            "anyOf": [
+              {
+                "minimum": 0.0,
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Consumption From Kwh"
+          },
+          "consumption_to_kwh": {
+            "anyOf": [
+              {
+                "minimum": 0.0,
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Consumption To Kwh"
+          },
+          "description": {
+            "default": "",
+            "title": "Description",
+            "type": "string"
+          },
+          "duration_months": {
+            "anyOf": [
+              {
+                "minimum": 1.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Duration Months"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "unit": {
+            "$ref": "#/components/schemas/DiscountUnit"
+          },
+          "validity": {
+            "$ref": "#/components/schemas/DiscountValidity"
+          }
+        },
+        "required": [
+          "name",
+          "validity",
+          "conditional",
+          "amount",
+          "unit"
+        ],
+        "title": "Discount",
+        "type": "object"
+      },
+      "DiscountUnit": {
+        "description": "ARERA UNITA_MISURA, as used under Sconto/PrezziSconto.",
+        "enum": [
+          "eur_year",
+          "eur_kw_year",
+          "eur_kwh",
+          "eur_smc",
+          "eur_one_off",
+          "percent"
+        ],
+        "title": "DiscountUnit",
+        "type": "string"
+      },
+      "DiscountValidity": {
+        "description": "ARERA Sconto/VALIDITA.",
+        "enum": [
+          "on_entry",
+          "within_12_months",
+          "beyond_12_months"
+        ],
+        "title": "DiscountValidity",
+        "type": "string"
+      },
+      "ErrorDetail": {
+        "properties": {
+          "field": {
+            "title": "Field",
+            "type": "string"
+          },
+          "message": {
+            "title": "Message",
+            "type": "string"
+          }
+        },
+        "required": [
+          "field",
+          "message"
+        ],
+        "title": "ErrorDetail",
+        "type": "object"
+      },
+      "ErrorResponse": {
+        "properties": {
+          "detail": {
+            "title": "Detail",
+            "type": "string"
+          }
+        },
+        "required": [
+          "detail"
+        ],
+        "title": "ErrorResponse",
+        "type": "object"
+      },
+      "Flat": {
+        "additionalProperties": false,
+        "description": "Replace every month's PUN with a single flat value.",
+        "properties": {
+          "kind": {
+            "const": "flat",
+            "default": "flat",
+            "title": "Kind",
+            "type": "string"
+          },
+          "value": {
+            "minimum": 0.0,
+            "title": "Value",
+            "type": "number"
+          }
+        },
+        "required": [
+          "value"
+        ],
+        "title": "Flat",
+        "type": "object"
+      },
+      "HTTPValidationError": {
+        "properties": {
+          "detail": {
+            "items": {
+              "$ref": "#/components/schemas/ValidationError"
+            },
+            "title": "Detail",
+            "type": "array"
+          }
+        },
+        "title": "HTTPValidationError",
+        "type": "object"
+      },
+      "Health": {
+        "properties": {
+          "catalog_age_days": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Catalog Age Days"
+          },
+          "catalog_loaded": {
+            "title": "Catalog Loaded",
+            "type": "boolean"
+          },
+          "snapshot_date": {
+            "anyOf": [
+              {
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Snapshot Date"
+          },
+          "status": {
+            "const": "ok",
+            "default": "ok",
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "catalog_loaded"
+        ],
+        "title": "Health",
+        "type": "object"
+      },
+      "Historical": {
+        "additionalProperties": false,
+        "description": "The default scenario: use the PUN actually recorded, month by month.",
+        "properties": {
+          "kind": {
+            "const": "historical",
+            "default": "historical",
+            "title": "Kind",
+            "type": "string"
+          }
+        },
+        "title": "Historical",
+        "type": "object"
+      },
+      "MonthInput": {
+        "additionalProperties": false,
+        "properties": {
+          "f1": {
+            "anyOf": [
+              {
+                "maximum": 100000.0,
+                "minimum": 0.0,
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "F1"
+          },
+          "f2": {
+            "anyOf": [
+              {
+                "maximum": 100000.0,
+                "minimum": 0.0,
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "F2"
+          },
+          "f3": {
+            "anyOf": [
+              {
+                "maximum": 100000.0,
+                "minimum": 0.0,
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "F3"
+          },
+          "kwh": {
+            "maximum": 100000.0,
+            "minimum": 0.0,
+            "title": "Kwh",
+            "type": "number"
+          },
+          "month": {
+            "examples": [
+              "2025-09"
+            ],
+            "pattern": "^\\d{4}-(0[1-9]|1[0-2])$",
+            "title": "Month",
+            "type": "string"
+          }
+        },
+        "required": [
+          "month",
+          "kwh"
+        ],
+        "title": "MonthInput",
+        "type": "object"
+      },
+      "OfferListItem": {
+        "properties": {
+          "band_structure": {
+            "$ref": "#/components/schemas/BandStructure"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "price_type": {
+            "$ref": "#/components/schemas/PriceType"
+          },
+          "source": {
+            "$ref": "#/components/schemas/OfferSource"
+          },
+          "supplier": {
+            "title": "Supplier",
+            "type": "string"
+          },
+          "url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Url"
+          },
+          "valid_to": {
+            "anyOf": [
+              {
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Valid To"
+          }
+        },
+        "required": [
+          "id",
+          "supplier",
+          "name",
+          "url",
+          "price_type",
+          "band_structure",
+          "source",
+          "valid_to"
+        ],
+        "title": "OfferListItem",
+        "type": "object"
+      },
+      "OfferPage": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/OfferListItem"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "limit": {
+            "title": "Limit",
+            "type": "integer"
+          },
+          "offset": {
+            "title": "Offset",
+            "type": "integer"
+          },
+          "total": {
+            "title": "Total",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "total",
+          "limit",
+          "offset",
+          "items"
+        ],
+        "title": "OfferPage",
+        "type": "object"
+      },
+      "OfferSource": {
+        "enum": [
+          "placet",
+          "mlibero",
+          "custom"
+        ],
+        "title": "OfferSource",
+        "type": "string"
+      },
+      "ParseResult": {
+        "properties": {
+          "profiles": {
+            "items": {
+              "$ref": "#/components/schemas/ParsedProfile"
+            },
+            "title": "Profiles",
+            "type": "array"
+          },
+          "skipped": {
+            "description": "Locations found in the file but not usable (need 12 consecutive months of non-negative kWh).",
+            "items": {
+              "type": "string"
+            },
+            "title": "Skipped",
+            "type": "array"
+          }
+        },
+        "required": [
+          "profiles",
+          "skipped"
+        ],
+        "title": "ParseResult",
+        "type": "object"
+      },
+      "ParsedProfile": {
+        "properties": {
+          "location": {
+            "title": "Location",
+            "type": "string"
+          },
+          "months": {
+            "items": {
+              "$ref": "#/components/schemas/SampleMonth"
+            },
+            "title": "Months",
+            "type": "array"
+          }
+        },
+        "required": [
+          "location",
+          "months"
+        ],
+        "title": "ParsedProfile",
+        "type": "object"
+      },
+      "PriceType": {
+        "enum": [
+          "fixed",
+          "variable"
+        ],
+        "title": "PriceType",
+        "type": "string"
+      },
+      "ResultItem": {
+        "description": "One ranked offer. ``cost_eur`` is the commodity/retailer cost only,\nbefore VAT (see ``assumptions.cost_label``); ``rank`` and\n``delta_vs_best_eur`` are over all eligible offers, before any filter.",
+        "properties": {
+          "band_structure": {
+            "$ref": "#/components/schemas/BandStructure"
+          },
+          "break_even_pun_eur_kwh": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Break Even Pun Eur Kwh"
+          },
+          "break_even_status": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/BreakEvenStatus"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "breakdown": {
+            "$ref": "#/components/schemas/CostBreakdown"
+          },
+          "conditional_discounts": {
+            "items": {
+              "$ref": "#/components/schemas/Discount"
+            },
+            "title": "Conditional Discounts",
+            "type": "array"
+          },
+          "cost_eur": {
+            "title": "Cost Eur",
+            "type": "number"
+          },
+          "delta_vs_best_eur": {
+            "title": "Delta Vs Best Eur",
+            "type": "number"
+          },
+          "dispatching_is_standard_estimate": {
+            "title": "Dispatching Is Standard Estimate",
+            "type": "boolean"
+          },
+          "eur_per_kwh_effective": {
+            "title": "Eur Per Kwh Effective",
+            "type": "number"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "offer_id": {
+            "title": "Offer Id",
+            "type": "string"
+          },
+          "one_off_fee_eur": {
+            "title": "One Off Fee Eur",
+            "type": "number"
+          },
+          "price_type": {
+            "$ref": "#/components/schemas/PriceType"
+          },
+          "rank": {
+            "title": "Rank",
+            "type": "integer"
+          },
+          "source": {
+            "$ref": "#/components/schemas/OfferSource"
+          },
+          "supplier": {
+            "title": "Supplier",
+            "type": "string"
+          },
+          "supplier_name_source": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/SupplierNameSource"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "supplier_vat": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Supplier Vat"
+          },
+          "url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Url"
+          },
+          "valid_from": {
+            "anyOf": [
+              {
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Valid From"
+          },
+          "valid_to": {
+            "anyOf": [
+              {
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Valid To"
+          }
+        },
+        "required": [
+          "offer_id",
+          "rank",
+          "supplier",
+          "name",
+          "supplier_vat",
+          "supplier_name_source",
+          "url",
+          "source",
+          "price_type",
+          "band_structure",
+          "valid_from",
+          "valid_to",
+          "cost_eur",
+          "delta_vs_best_eur",
+          "eur_per_kwh_effective",
+          "breakdown",
+          "break_even_pun_eur_kwh",
+          "break_even_status",
+          "one_off_fee_eur",
+          "conditional_discounts",
+          "dispatching_is_standard_estimate"
+        ],
+        "title": "ResultItem",
+        "type": "object"
+      },
+      "SampleHousehold": {
+        "properties": {
+          "description": {
+            "title": "Description",
+            "type": "string"
+          },
+          "location": {
+            "title": "Location",
+            "type": "string"
+          },
+          "months": {
+            "items": {
+              "$ref": "#/components/schemas/SampleMonth"
+            },
+            "title": "Months",
+            "type": "array"
+          }
+        },
+        "required": [
+          "location",
+          "description",
+          "months"
+        ],
+        "title": "SampleHousehold",
+        "type": "object"
+      },
+      "SampleMonth": {
+        "description": "One month of consumption, in the same shape `/api/compare` accepts.\n\nNo PUN: the API always prices variable offers with ARERA's monthly PUN\nfrom the catalogue, never a user-supplied one.",
+        "properties": {
+          "kwh": {
+            "title": "Kwh",
+            "type": "number"
+          },
+          "month": {
+            "examples": [
+              "2025-09"
+            ],
+            "pattern": "^\\d{4}-(0[1-9]|1[0-2])$",
+            "title": "Month",
+            "type": "string"
+          }
+        },
+        "required": [
+          "month",
+          "kwh"
+        ],
+        "title": "SampleMonth",
+        "type": "object"
+      },
+      "Scaled": {
+        "additionalProperties": false,
+        "description": "Multiply every historical PUN value by a factor (e.g. 1.2 = +20%).",
+        "properties": {
+          "factor": {
+            "exclusiveMinimum": 0.0,
+            "title": "Factor",
+            "type": "number"
+          },
+          "kind": {
+            "const": "scaled",
+            "default": "scaled",
+            "title": "Kind",
+            "type": "string"
+          }
+        },
+        "required": [
+          "factor"
+        ],
+        "title": "Scaled",
+        "type": "object"
+      },
+      "SupplierNameSource": {
+        "description": "Where an offer's ``supplier`` display name came from, in resolution\norder (see ``bestbill.arera.operators`` and ``bestbill.catalog.build``):\n\n- ``ARERA``: the ARERA \"Ricerca operatori\" export (RAGIONE SOCIALE),\n  matched by VAT (PARTITA IVA).\n- ``PLACET``: a PLACET row's ``denominazione`` for the same VAT\n  (mercato libero offers only -- PLACET offers always use ``ARERA``\n  or their own ``denominazione`` directly is treated as ``PLACET``).\n- ``DOMAIN``: the retailer's website domain, from\n  ``URL_SITO_VENDITORE``, stripped of scheme/``www.``/path.\n- ``VAT``: last resort, ``\"P.IVA <vat>\"``.",
+        "enum": [
+          "arera",
+          "placet",
+          "domain",
+          "vat"
+        ],
+        "title": "SupplierNameSource",
+        "type": "string"
+      },
+      "ValidationError": {
+        "properties": {
+          "ctx": {
+            "title": "Context",
+            "type": "object"
+          },
+          "input": {
+            "title": "Input"
+          },
+          "loc": {
+            "items": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "integer"
+                }
+              ]
+            },
+            "title": "Location",
+            "type": "array"
+          },
+          "msg": {
+            "title": "Message",
+            "type": "string"
+          },
+          "type": {
+            "title": "Error Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "loc",
+          "msg",
+          "type"
+        ],
+        "title": "ValidationError",
+        "type": "object"
+      },
+      "ValidationErrorResponse": {
+        "properties": {
+          "detail": {
+            "items": {
+              "$ref": "#/components/schemas/ErrorDetail"
+            },
+            "title": "Detail",
+            "type": "array"
+          }
+        },
+        "required": [
+          "detail"
+        ],
+        "title": "ValidationErrorResponse",
+        "type": "object"
+      }
+    }
+  },
+  "info": {
+    "description": "Stateless API: consumption is processed in memory per request and never stored or logged. Every cost is the commodity/retailer cost only, before VAT ('costo materia energia (IVA esclusa)'), and a backtest ('perfect foresight'): the same kWh and the same monthly PUN as your last 12 months. It is not a forecast.",
+    "title": "BestBill API",
+    "version": "0.1.0"
+  },
+  "openapi": "3.1.0",
+  "paths": {
+    "/api/catalog/meta": {
+      "get": {
+        "operationId": "catalog_meta_api_catalog_meta_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CatalogMeta"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Catalogue not loaded yet."
+          }
+        },
+        "summary": "Catalog Meta"
+      }
+    },
+    "/api/compare": {
+      "post": {
+        "description": "Backtest (\"perfect foresight\"): what today's offers would have cost on\nyour last 12 months of consumption and PUN. Commodity/retailer cost only,\nbefore VAT. Not a forecast.",
+        "operationId": "compare_offers_api_compare_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CompareRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CompareResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "413": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Body over 64 KB."
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ValidationErrorResponse"
+                }
+              }
+            },
+            "description": "Unprocessable Content"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Catalogue not loaded yet."
+          }
+        },
+        "summary": "Compare Offers"
+      }
+    },
+    "/api/comuni": {
+      "get": {
+        "operationId": "comuni_api_comuni_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "q",
+            "required": true,
+            "schema": {
+              "maxLength": 60,
+              "minLength": 2,
+              "title": "Q",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/ComuneOut"
+                  },
+                  "title": "Response Comuni Api Comuni Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Comuni"
+      }
+    },
+    "/api/health": {
+      "get": {
+        "operationId": "health_api_health_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Health"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Health"
+      }
+    },
+    "/api/offers": {
+      "get": {
+        "operationId": "list_offers_api_offers_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "price_type",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "$ref": "#/components/schemas/PriceType"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Price Type"
+            }
+          },
+          {
+            "in": "query",
+            "name": "source",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "$ref": "#/components/schemas/OfferSource"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Source"
+            }
+          },
+          {
+            "in": "query",
+            "name": "supplier",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 100,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Supplier"
+            }
+          },
+          {
+            "in": "query",
+            "name": "q",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 100,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Q"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 50,
+              "maximum": 200,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "offset",
+            "required": false,
+            "schema": {
+              "default": 0,
+              "minimum": 0,
+              "title": "Offset",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OfferPage"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Catalogue not loaded yet."
+          }
+        },
+        "summary": "List Offers"
+      }
+    },
+    "/api/parse": {
+      "post": {
+        "description": "Read a workbook in the legacy format. Nothing is stored.",
+        "operationId": "parse_api_parse_post",
+        "requestBody": {
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "$ref": "#/components/schemas/Body_parse_api_parse_post"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ParseResult"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "413": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Upload over 2 MB."
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ValidationErrorResponse"
+                }
+              }
+            },
+            "description": "Unprocessable Content"
+          }
+        },
+        "summary": "Parse"
+      }
+    },
+    "/api/sample": {
+      "get": {
+        "operationId": "sample_api_sample_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SampleHousehold"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Sample"
+      }
+    }
+  }
+}

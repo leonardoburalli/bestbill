@@ -6,6 +6,7 @@ from __future__ import annotations
 
 import pathlib
 from datetime import date, datetime
+from typing import IO
 
 import openpyxl
 from openpyxl.worksheet.worksheet import Worksheet
@@ -44,7 +45,7 @@ class ExcelFormatError(ValueError):
     """The workbook doesn't match the expected legacy format."""
 
 
-def _open_workbook(path: str | pathlib.Path) -> openpyxl.workbook.Workbook:
+def _open_workbook(path: str | pathlib.Path | IO[bytes]) -> openpyxl.workbook.Workbook:
     try:
         wb = openpyxl.load_workbook(path, read_only=True, data_only=True)
     except FileNotFoundError as exc:
@@ -80,7 +81,7 @@ def _iter_data_rows(ws: Worksheet) -> list[tuple[object, ...]]:
     return [row for row in rows if any(v is not None for v in row)]
 
 
-def list_locations(path: str | pathlib.Path) -> list[str]:
+def list_locations(path: str | pathlib.Path | IO[bytes]) -> list[str]:
     """Return the locations available in the workbook (from ``Storico_*``
     sheet names), preserving sheet order.
     """
@@ -164,7 +165,7 @@ def read_custom_offers(path: str | pathlib.Path) -> list[Offer]:
 
 
 def read_location_data(
-    path: str | pathlib.Path, location: str
+    path: str | pathlib.Path | IO[bytes], location: str
 ) -> tuple[ConsumptionProfile, PunSeries, PunSeries]:
     """Read the ``Storico_<location>`` sheet: 12 months of consumption, the
     actual PUN series, and the forecast PUN series.

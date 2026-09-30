@@ -6,9 +6,10 @@ import sqlite3
 from collections.abc import Sequence
 from datetime import date
 from pathlib import Path
-from typing import Literal
+from typing import Any, Literal
 
 from bestbill.core.models import Offer, PunSeries
+from bestbill.geo import resolve_comune
 
 
 class CatalogStore:
@@ -77,8 +78,8 @@ class CatalogStore:
         istat_comune: str | None = None,
     ) -> list[Offer]:
         """National offers, plus geo-restricted offers matching
-        ``istat_comune`` (province derived from its first 3 digits, see
-        ``GeoRestriction.matches``); residency filtering is left to
+        ``istat_comune`` (comune, provincia or regione, see
+        ``bestbill.geo``); residency filtering is left to
         ``bestbill.core.calculator.compare`` (this is a coarse
         pre-filter to avoid loading every row).
         """
@@ -87,11 +88,12 @@ class CatalogStore:
         ).fetchall()
         offers = [Offer.model_validate_json(r["data"]) for r in rows]
         if istat_comune is not None:
-            provincia = istat_comune[:3]
+            ref = resolve_comune(istat_comune)
             geo_rows = self._conn.execute(
                 "SELECT DISTINCT offer_id FROM offer_geo WHERE "
-                "(level = 'comune' AND code = ?) OR (level = 'provincia' AND code = ?)",
-                (istat_comune, provincia),
+                "(level = 'comune' AND code = ?) OR (level = 'provincia' AND code = ?)"
+                " OR (level = 'regione' AND code = ?)",
+                (ref.codice, ref.provincia, ref.regione),
             ).fetchall()
             geo_ids = [r["offer_id"] for r in geo_rows]
             if geo_ids:
@@ -105,6 +107,30 @@ class CatalogStore:
                 )
         del residency  # eligibility on residency is handled by compare()
         return offers
+
+    def stats(self) -> dict[str, Any]:
+        """Counts for the meta endpoint: included offers (total and by
+        source) and excluded offers by reason.
+        """
+        by_source = {
+            r["source"]: r["n"]
+            for r in self._conn.execute(
+                "SELECT source, COUNT(*) AS n FROM offers GROUP BY source"
+            )
+        }
+        excluded = {
+            r["reason"]: r["n"]
+            for r in self._conn.execute(
+                "SELECT reason, COUNT(*) AS n FROM excluded GROUP BY reason "
+                "ORDER BY n DESC, reason"
+            )
+        }
+        return {
+            "included": sum(by_source.values()),
+            "included_by_source": by_source,
+            "excluded": sum(excluded.values()),
+            "excluded_by_reason": excluded,
+        }
 
     def pun_series(self) -> PunSeries:
         rows = self._conn.execute("SELECT month, value FROM pun").fetchall()

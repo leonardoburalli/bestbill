@@ -11,8 +11,12 @@ license = "MIT"
 license-files = ["LICENSE"]
 requires-python = ">=3.13"
 dependencies = [
+  "fastapi>=0.142,<1",
+  "httpx>=0.28,<1",
   "openpyxl>=3.1,<4",
   "pydantic>=2.10,<3",
+  "python-multipart>=0.0.32,<1",
+  "uvicorn[standard]>=0.54,<1",
 ]
 
 [project.optional-dependencies]
@@ -36,6 +40,9 @@ packages = ["src/bestbill"]
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 addopts = "-q -m \"not slow\""
+filterwarnings = [
+  "ignore:Using `httpx` with `starlette.testclient`:Warning",
+]
 markers = [
   "slow: local-only tests that need the full ARERA source files (see BESTBILL_ARERA_FIXTURES_DIR)",
 ]

@@ -1,0 +1,29 @@
+# Render Blueprint: New -> Blueprint -> select this repo.
+services:
+  - type: web
+    name: bestbill-api
+    runtime: docker
+    plan: free
+    region: frankfurt
+    branch: main
+    autoDeploy: true
+    dockerfilePath: ./Dockerfile
+    healthCheckPath: /api/health
+    envVars:
+      - key: BESTBILL_REPO
+        value: leonardoburalli/bestbill
+      - key: BESTBILL_RELEASE_TAG
+        value: catalog-latest
+      # Render terminates TLS: trust X-Forwarded-For for the per-IP rate limit.
+      - key: BESTBILL_TRUST_PROXY
+        value: "1"
+      # Comma-separated allowed origins. Leave empty in production: the
+      # frontend is same-origin through the Vercel rewrite.
+      - key: BESTBILL_CORS_ORIGINS
+        sync: false
+      # Only needed while the repository is private, to download the catalogue
+      # release assets. Use a fine-grained personal access token with
+      # read-only "Contents" permission on this repository only. Not needed
+      # once the repo is public.
+      - key: GITHUB_TOKEN
+        sync: false

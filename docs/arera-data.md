@@ -65,8 +65,9 @@ Base: `https://www.ilportaleofferte.it/portaleOfferte/resources/opendata/csv/`
 | Historical indices (PUN monthly since 2020, `;`-separated, decimal comma) | `/portaleOfferte/resources/cms/documents/5d6f1085b4d5f20821af55764e647671.csv` |
 
 Files are published 22:30–23:05 UTC on day D-1, and older daily files stay
-downloadable. Cron: **00:00 UTC**. If a file is missing, retry with backoff, then
-fall back to D-1 and tag the effective date in the manifest.
+downloadable. Publish after ~01:00 Rome time with `make catalog-publish` (manual,
+from a local machine; the portal blocks cloud servers). If a file is missing, retry
+with backoff, then fall back to D-1 and tag the effective date in the manifest.
 
 ## Band split (household, when bill bands are unknown)
 F1 33 %, F2 31 %, F3 36 % (F23 = 67 %). ARERA reference customer ("cliente tipo"): 2,700 kWh/year at 3 kW.

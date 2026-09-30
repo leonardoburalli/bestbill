@@ -76,3 +76,17 @@ def test_store_is_read_only(tmp_path):
         with pytest.raises(Exception):  # noqa: B017, PT011
             s._conn.execute("DELETE FROM offers")
             s._conn.commit()
+
+
+def test_eligible_offers_includes_regione_restricted_offer(store):
+    all_offers = store.offers(limit=1000)
+    region_offer = next(
+        o for o in all_offers if o.geo is not None and o.geo.regioni == {"07", "01"}
+    )
+    assert not any(
+        o.id == region_offer.id for o in store.eligible_offers(istat_comune="015146")
+    )
+    for comune in ("010025", "001272"):  # Genova (07), Torino (01)
+        assert any(
+            o.id == region_offer.id for o in store.eligible_offers(istat_comune=comune)
+        )

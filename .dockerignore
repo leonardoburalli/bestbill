@@ -1,0 +1,17 @@
+.venv
+build
+dist
+tests
+Input
+Output
+frontend
+.git
+.github
+.cicd
+.mypy_cache
+.pytest_cache
+.ruff_cache
+.coverage
+__pycache__
+*.pyc
+PLAN*.md
