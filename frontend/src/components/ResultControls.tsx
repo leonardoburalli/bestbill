@@ -3,12 +3,15 @@ import { parseItalianNumber } from '../lib/consumption'
 import type { CompareFilters, PriceType, Scenario, SourceFilter } from '../types'
 import { btnSecondary, FieldError, inputBase, inputBorder, Segmented, Spinner } from './ui'
 
-const DURATION_OPTIONS = [
-  { value: '', label: 'Qualsiasi' },
-  { value: '12', label: 'Almeno 12 mesi' },
-  { value: '24', label: 'Almeno 24 mesi' },
-  { value: '36', label: 'Almeno 36 mesi' },
+/** Duration filter → API bounds. "12 mesi" = exactly 12; "+ di 12 mesi" = 13 or more. */
+const DURATION_OPTIONS: { value: string; label: string; min: number | null; max: number | null }[] = [
+  { value: '', label: 'Tutte', min: null, max: null },
+  { value: '12', label: '12 mesi', min: 12, max: 12 },
+  { value: 'over12', label: '+ di 12 mesi', min: 13, max: null },
 ]
+const durationValue = (f: CompareFilters) =>
+  DURATION_OPTIONS.find((o) => o.min === (f.min_duration_months ?? null) && o.max === (f.max_duration_months ?? null))
+    ?.value ?? ''
 
 type Mode = Scenario['kind']
 
@@ -98,14 +101,15 @@ export default function ResultControls({
           </p>
           <div>
             <label htmlFor={durationId} className="mb-2 block text-sm font-semibold text-ink">
-              Durata minima
+              Durata
             </label>
             <select
               id={durationId}
-              value={filters.min_duration_months ? String(filters.min_duration_months) : ''}
-              onChange={(e) =>
-                onFilters({ ...filters, min_duration_months: e.target.value ? Number(e.target.value) : null })
-              }
+              value={durationValue(filters)}
+              onChange={(e) => {
+                const o = DURATION_OPTIONS.find((x) => x.value === e.target.value) ?? DURATION_OPTIONS[0]
+                onFilters({ ...filters, min_duration_months: o.min, max_duration_months: o.max })
+              }}
               aria-describedby={durationHelpId}
               className={`${inputBase} ${inputBorder(false)} w-auto min-w-[13rem] pr-8`}
             >
@@ -116,7 +120,7 @@ export default function ResultControls({
               ))}
             </select>
             <p id={durationHelpId} className="mt-1.5 max-w-sm text-sm leading-relaxed text-ink-soft">
-              Se scegli una durata minima, le offerte con durata non specificata non vengono mostrate.
+              Le offerte con durata non specificata compaiono solo con «Tutte».
             </p>
           </div>
         </div>

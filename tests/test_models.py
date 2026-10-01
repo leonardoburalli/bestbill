@@ -148,3 +148,24 @@ def test_guarantees_min_duration_semantics():
         update={"duration_months": 36, "duration_open_ended": True}
     )
     assert open_ended.guarantees_min_duration(1) is False
+
+
+def test_duration_within_semantics():
+    from tests.helpers import fixed_offer
+
+    base = fixed_offer()
+    twelve = base.model_copy(update={"duration_months": 12})
+    thirty_six = base.model_copy(update={"duration_months": 36})
+    open_ended = base.model_copy(update={"duration_open_ended": True})
+    # no bound: everything passes, including unknown and open-ended
+    assert base.duration_within(None, None)
+    assert open_ended.duration_within(None, None)
+    # exactly 12
+    assert twelve.duration_within(12, 12)
+    assert not thirty_six.duration_within(12, 12)
+    # more than 12
+    assert thirty_six.duration_within(13, None)
+    assert not twelve.duration_within(13, None)
+    # unknown / open-ended never pass a bound
+    assert not base.duration_within(None, 120)
+    assert not open_ended.duration_within(1, None)

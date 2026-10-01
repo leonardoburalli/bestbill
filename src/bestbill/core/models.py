@@ -408,6 +408,18 @@ class Offer(BaseModel):
             and self.duration_months >= min_months
         )
 
+    def duration_within(self, min_months: int | None, max_months: int | None) -> bool:
+        """True if no bound is given, or if the conditions are guaranteed for
+        a fixed period within [min_months, max_months]. Open-ended and
+        unknown durations never qualify once a bound is set."""
+        if min_months is None and max_months is None:
+            return True
+        if self.duration_open_ended or self.duration_months is None:
+            return False
+        return (min_months is None or self.duration_months >= min_months) and (
+            max_months is None or self.duration_months <= max_months
+        )
+
     @model_validator(mode="after")
     def _check_bands_and_prices(self) -> Offer:
         expected = EXPECTED_BAND_KEYS[self.band_structure]
