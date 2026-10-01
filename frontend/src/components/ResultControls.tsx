@@ -116,7 +116,7 @@ export default function ResultControls({
               ))}
             </select>
             <p id={durationHelpId} className="mt-1.5 max-w-sm text-sm leading-relaxed text-ink-soft">
-              Se scegli una durata minima, le offerte a durata indeterminata o non indicata non vengono mostrate.
+              Se scegli una durata minima, le offerte con durata non specificata non vengono mostrate.
             </p>
           </div>
         </div>
