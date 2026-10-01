@@ -8,14 +8,61 @@ const MONTHS = ['gen', 'feb', 'mar', 'apr', 'mag', 'giu', 'lug', 'ago', 'set', '
 export const formatEur = (n: number) => eur.format(n)
 export const formatEurCompact = (n: number) => eurCompact.format(n)
 export const formatEurPerKwh = (n: number) => `${perKwh.format(n)} €/kWh`
+/** Spread/price number with sign handling: "PUN + 0,0120" or "PUN − 0,0010" for a negative spread. */
+const priceNumber = (n: number, kind: 'fixed' | 'pun_spread' | null | undefined) =>
+  kind === 'pun_spread' ? `PUN ${n < 0 ? '−' : '+'} ${perKwh.format(Math.abs(n))}` : perKwh.format(n)
 /** Advertised energy price: "0,1604 €/kWh" (fixed) or "PUN + 0,0120 €/kWh" (spread over PUN).
  *  "—" when the API did not send it (older API version). */
 export const formatEnergyPrice = (n: number | null | undefined, kind: 'fixed' | 'pun_spread' | null | undefined) =>
-  typeof n !== 'number' || !Number.isFinite(n)
-    ? '—'
-    : kind === 'pun_spread'
-      ? `PUN + ${formatEurPerKwh(n)}`
-      : formatEurPerKwh(n)
+  typeof n !== 'number' || !Number.isFinite(n) ? '—' : `${priceNumber(n, kind)} €/kWh`
+
+type EnergyPriceLike = {
+  energy_price_eur_kwh?: number | null
+  energy_price_kind?: 'fixed' | 'pun_spread' | null
+  energy_price_after_discounts_eur_kwh?: number | null
+  energy_discount_pct?: number | null
+}
+
+export interface EnergyPriceView {
+  /** What to show as the price: after unconditional energy discounts when known. "0,1455 €/kWh" / "PUN + 0,0154 €/kWh" */
+  main: string
+  /** Only when a discount applies: "listino 0,2079 · sconto 30% incluso" (no unit, it is already on the line above). */
+  note: string | null
+}
+
+const pctFmt = new Intl.NumberFormat('it-IT', { maximumFractionDigits: 1 })
+
+/** Energy price for display. Uses the after-discount price when the API sends it (falls back to the listed
+ *  price otherwise) and, if a discount applies, a short note with the list price and the discount. */
+export function energyPriceView(item: EnergyPriceLike): EnergyPriceView {
+  const kind = item.energy_price_kind
+  const listed = item.energy_price_eur_kwh
+  const after = item.energy_price_after_discounts_eur_kwh
+  const hasListed = typeof listed === 'number' && Number.isFinite(listed)
+  const hasAfter = typeof after === 'number' && Number.isFinite(after)
+  if (!hasListed) return { main: formatEnergyPrice(hasAfter ? after : null, kind), note: null }
+  if (!hasAfter || after >= listed) return { main: formatEnergyPrice(listed, kind), note: null }
+  const pct =
+    typeof item.energy_discount_pct === 'number' && item.energy_discount_pct > 0
+      ? item.energy_discount_pct
+      : listed !== 0
+        ? Math.round((1 - after / listed) * 1000) / 10
+        : 0
+  if (!(pct > 0)) return { main: formatEnergyPrice(after, kind), note: null }
+  return {
+    main: formatEnergyPrice(after, kind),
+    note: `listino ${priceNumber(listed, kind)} · sconto ${pctFmt.format(pct)}% incluso`,
+  }
+}
+/** One-line version for running text: "0,1455 €/kWh (listino 0,2079 · sconto 30% incluso)". */
+export function energyPriceText(item: EnergyPriceLike): string {
+  const v = energyPriceView(item)
+  return v.note ? `${v.main} (${v.note})` : v.main
+}
+/** Same as above without the unit and without a note: CSV cells, "0,1455" / "PUN + 0,0154". */
+export function energyPriceCsv(n: number | null | undefined, kind: 'fixed' | 'pun_spread' | null | undefined): string | null {
+  return typeof n !== 'number' || !Number.isFinite(n) ? null : priceNumber(n, kind)
+}
 /** Shown next to the all-in average so it is not compared with the advertised price. */
 export const ALL_IN_HINT =
   'Costo totale diviso per i kWh: include quota fissa (CCV), dispacciamento e altri costi. Per questo è più alto del prezzo pubblicizzato.'

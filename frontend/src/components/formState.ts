@@ -156,11 +156,15 @@ export function comuneLabel(c: Comune): string {
   return `${c.nome} (${c.sigla_provincia})`
 }
 
+/** Offers per page: first load and every "Mostra altre". */
+export const PAGE_SIZE = 50
+
 export function buildRequest(
   form: FormState,
   comune: Comune | null,
   scenario: Scenario,
   filters: CompareFilters,
+  search?: string,
 ): CompareRequest {
   const f: CompareFilters = {}
   if (filters.price_type) f.price_type = filters.price_type
@@ -176,7 +180,8 @@ export function buildRequest(
     committed_power_kw: parseItalianNumber(form.power) ?? 3,
     scenario,
     filters: f,
-    top_n: 50,
+    top_n: PAGE_SIZE,
+    ...(search?.trim() ? { search: search.trim().slice(0, 100) } : {}),
   }
 }
 

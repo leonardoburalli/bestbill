@@ -1,10 +1,9 @@
-import { ALL_IN_HINT, formatEnergyPrice, formatEur, formatEurPerKwh, formatEurPerMonth, formatEurPerYear } from '../lib/format'
+import { ALL_IN_HINT, formatEur, formatEurPerKwh, formatEurPerMonth, formatEurPerYear } from '../lib/format'
 import type { ResultItem } from '../types'
 import { TrophyIcon } from './icons'
-import { BreakEvenText, OfferBadges, OfferDuration, OfferFlags, OfferLink } from './OfferParts'
+import { BreakEvenText, EnergyPrice, OfferBadges, OfferDuration, OfferFlags, OfferLink } from './OfferParts'
 
-export default function BestOffer({ item, next }: { item: ResultItem; next?: ResultItem }) {
-  const overall = item.rank === 1
+export default function BestOffer({ item, next, filtered = false }: { item: ResultItem; next?: ResultItem; filtered?: boolean }) {
   return (
     <section
       aria-labelledby="h-best"
@@ -17,7 +16,7 @@ export default function BestOffer({ item, next }: { item: ResultItem; next?: Res
       <p className="flex items-center gap-2 text-sm font-semibold uppercase tracking-wide text-forest-dark">
         <TrophyIcon size={18} />
         <span id="h-best">
-          {overall ? 'L\'offerta che ti costerebbe meno nei prossimi 12 mesi' : `La migliore con questi filtri (in assoluto è la n. ${item.rank})`}
+          {filtered ? 'L\'offerta che ti costerebbe meno con questi filtri' : 'L\'offerta che ti costerebbe meno nei prossimi 12 mesi'}
         </span>
       </p>
 
@@ -40,7 +39,7 @@ export default function BestOffer({ item, next }: { item: ResultItem; next?: Res
           <dl className="mt-3 grid grid-cols-2 gap-x-5 gap-y-1 text-left md:ml-auto md:max-w-[19rem]">
             <div>
               <dt className="text-xs text-ink-soft">Prezzo energia</dt>
-              <dd className="text-sm font-semibold tabular">{formatEnergyPrice(item.energy_price_eur_kwh, item.energy_price_kind)}</dd>
+              <dd className="text-sm font-semibold tabular"><EnergyPrice item={item} noteClassName="mt-0.5 block text-xs font-normal leading-snug text-ink-soft" /></dd>
             </div>
             <div>
               <dt className="text-xs text-ink-soft">Costo medio tutto incluso</dt>

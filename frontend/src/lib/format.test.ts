@@ -1,4 +1,4 @@
-import { formatDate, formatDuration, formatDurationShort, formatEnergyPrice, formatEur, formatEurCompact, formatEurPerKwh, formatKwh } from './format'
+import { energyPriceText, energyPriceView, formatDate, formatDuration, formatDurationShort, formatEnergyPrice, formatEur, formatEurCompact, formatEurPerKwh, formatKwh } from './format'
 
 const norm = (s: string) => s.replace(/[\u00a0\u202f]/g, ' ')
 
@@ -9,6 +9,9 @@ describe('format', () => {
   it('formatEnergyPrice', () => {
     expect(formatEnergyPrice(0.1604, 'fixed')).toBe('0,1604 €/kWh')
     expect(formatEnergyPrice(0.012, 'pun_spread')).toBe('PUN + 0,0120 €/kWh')
+  })
+  it('formatEnergyPrice shows a negative spread with a minus', () => {
+    expect(formatEnergyPrice(-0.001, 'pun_spread')).toBe('PUN − 0,0010 €/kWh')
   })
   it('formatKwh groups 4-digit numbers', () => {
     expect(formatKwh(3200)).toBe('3.200 kWh')
@@ -37,5 +40,39 @@ describe('duration', () => {
   it('formatDurationShort', () => {
     expect(formatDurationShort({ duration_months: 24 })).toBe('24 mesi')
     expect(formatDurationShort({ duration_open_ended: true })).toBe('Non specificata')
+  })
+})
+
+describe('energyPriceView', () => {
+  it('shows the after-discount price with the list price and discount underneath', () => {
+    const v = energyPriceView({
+      energy_price_eur_kwh: 0.2079, energy_price_kind: 'fixed',
+      energy_price_after_discounts_eur_kwh: 0.1455, energy_discount_pct: 30,
+    })
+    expect(v.main).toBe('0,1455 €/kWh')
+    expect(v.note).toBe('listino 0,2079 · sconto 30% incluso')
+  })
+  it('works for a spread over PUN', () => {
+    const v = energyPriceView({
+      energy_price_eur_kwh: 0.022, energy_price_kind: 'pun_spread',
+      energy_price_after_discounts_eur_kwh: 0.0154, energy_discount_pct: 30,
+    })
+    expect(v.main).toBe('PUN + 0,0154 €/kWh')
+    expect(v.note).toBe('listino PUN + 0,0220 · sconto 30% incluso')
+    expect(energyPriceText({ energy_price_eur_kwh: 0.022, energy_price_kind: 'pun_spread', energy_price_after_discounts_eur_kwh: 0.0154, energy_discount_pct: 30 })).toBe(
+      'PUN + 0,0154 €/kWh (listino PUN + 0,0220 · sconto 30% incluso)',
+    )
+  })
+  it('works out the percentage when the API does not send it, with a decimal comma', () => {
+    const v = energyPriceView({ energy_price_eur_kwh: 0.2, energy_price_kind: 'fixed', energy_price_after_discounts_eur_kwh: 0.1795 })
+    expect(v.note).toBe('listino 0,2000 · sconto 10,3% incluso')
+  })
+  it('no note when there is no discount, or when the new field is missing', () => {
+    expect(energyPriceView({ energy_price_eur_kwh: 0.1604, energy_price_kind: 'fixed', energy_price_after_discounts_eur_kwh: 0.1604, energy_discount_pct: null }))
+      .toEqual({ main: '0,1604 €/kWh', note: null })
+    expect(energyPriceView({ energy_price_eur_kwh: 0.1604, energy_price_kind: 'fixed' })).toEqual({ main: '0,1604 €/kWh', note: null })
+  })
+  it('never shows NaN / undefined', () => {
+    expect(energyPriceView({}).main).toBe('—')
   })
 })

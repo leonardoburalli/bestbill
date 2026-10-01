@@ -3,7 +3,7 @@ from datetime import date
 import pytest
 
 from bestbill.core.calculator import compare
-from bestbill.core.models import Flat, Scaled
+from bestbill.core.models import Discount, Flat, Scaled
 
 from .helpers import fixed_offer, make_profile, make_pun, month, variable_offer
 
@@ -411,3 +411,72 @@ def test_energy_price_variable_banded_spread_weighted():
     r = compare([offer], profile, make_pun([0.10] * 12)).results[0]
     assert r.energy_price_eur_kwh == pytest.approx(0.4 * 0.20 + 0.3 * 0.10 + 0.3 * 0.05)
     assert r.energy_price_kind == "pun_spread"
+
+
+# -- after-discount energy price ---------------------------------------------
+def _after(offer, kwh=None):
+    profile = make_profile(kwh or [100.0] * 12)
+    res = compare([offer], profile, make_pun([0.10] * 12), today=date(2025, 1, 1))
+    return res.results[0]
+
+
+def _disc(**kw):
+    base = {
+        "name": "d",
+        "validity": "on_entry",
+        "conditional": False,
+        "amount": 10.0,
+        "unit": "percent",
+    }
+    base.update(kw)
+    return Discount(**base)
+
+
+def test_after_price_percent_on_fixed():
+    r = _after(fixed_offer(price=0.20, discounts=[_disc(amount=25.0)]))
+    assert r.energy_price_eur_kwh == pytest.approx(0.20)
+    assert r.energy_price_after_discounts_eur_kwh == pytest.approx(0.15)
+    assert r.energy_discount_pct == 25.0
+
+
+def test_after_price_eur_kwh_discount():
+    r = _after(fixed_offer(price=0.20, discounts=[_disc(amount=0.03, unit="eur_kwh")]))
+    assert r.energy_price_after_discounts_eur_kwh == pytest.approx(0.17)
+    assert r.energy_discount_pct == 15.0
+
+
+def test_after_price_duration_limited_prorated():
+    r = _after(
+        fixed_offer(
+            price=0.20,
+            discounts=[_disc(amount=0.06, unit="eur_kwh", duration_months=6)],
+        )
+    )
+    assert r.energy_price_after_discounts_eur_kwh == pytest.approx(0.17)
+
+
+def test_after_price_ignores_conditional_and_fixed_amount():
+    r = _after(
+        fixed_offer(
+            price=0.20,
+            discounts=[
+                _disc(amount=50.0, conditional=True),
+                _disc(amount=30.0, unit="eur_year"),
+            ],
+        )
+    )
+    assert r.energy_price_after_discounts_eur_kwh == pytest.approx(0.20)
+    assert r.energy_discount_pct is None
+
+
+def test_after_price_variable_applies_to_spread_only():
+    r = _after(variable_offer(spread=0.04, discounts=[_disc(amount=50.0)]))
+    assert r.energy_price_eur_kwh == pytest.approx(0.04)
+    assert r.energy_price_after_discounts_eur_kwh == pytest.approx(0.02)
+    assert r.energy_discount_pct == 50.0
+
+
+def test_after_price_no_discount_equals_listed():
+    r = _after(fixed_offer(price=0.12))
+    assert r.energy_price_after_discounts_eur_kwh == r.energy_price_eur_kwh
+    assert r.energy_discount_pct is None

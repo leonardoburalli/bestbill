@@ -1,13 +1,13 @@
 import { Fragment, useState } from 'react'
-import { ALL_IN_HINT, formatEnergyPrice, formatEur, formatEurPerKwh, formatEurPerYear } from '../lib/format'
+import { ALL_IN_HINT, formatEur, formatEurPerKwh, formatEurPerYear } from '../lib/format'
 import type { ResultItem } from '../types'
 import { ChevronDownIcon } from './icons'
-import { BreakEvenText, OfferBadges, OfferDetails, OfferDuration, OfferFlags, OfferLink } from './OfferParts'
+import { BreakEvenText, EnergyPrice, OfferBadges, OfferDetails, OfferDuration, OfferFlags, OfferLink } from './OfferParts'
 import { useIsWide } from './useIsWide'
 
-const deltaText = (n: number) => (n <= 0.005 ? 'Migliore in assoluto' : `+${formatEur(n)}`)
+const deltaText = (n: number) => (n <= 0.005 ? 'La più economica' : `+${formatEur(n)}`)
 
-export default function OfferList({ items }: { items: ResultItem[] }) {
+export default function OfferList({ items, total }: { items: ResultItem[]; total?: number }) {
   const wide = useIsWide()
   // Sotto i 1280px la tabella ha meno spazio: "Rispetto alla migliore" passa sotto il costo
   // e i due prezzi al kWh si impilano in un'unica colonna.
@@ -22,19 +22,21 @@ export default function OfferList({ items }: { items: ResultItem[] }) {
     })
 
   return wide ? (
-    <OfferTable items={items} open={open} toggle={toggle} roomy={roomy} />
+    <OfferTable items={items} total={total} open={open} toggle={toggle} roomy={roomy} />
   ) : (
-    <OfferCards items={items} open={open} toggle={toggle} />
+    <OfferCards items={items} total={total} open={open} toggle={toggle} />
   )
 }
 
 interface ListProps {
   items: ResultItem[]
+  /** Offers matching the filters: shown as "di N" next to the rank. */
+  total?: number
   open: Set<string>
   toggle: (id: string) => void
 }
 
-function OfferTable({ items, open, toggle, roomy }: ListProps & { roomy: boolean }) {
+function OfferTable({ items, total, open, toggle, roomy }: ListProps & { roomy: boolean }) {
   const columns = roomy ? 8 : 6
   return (
     <div className="overflow-hidden rounded-2xl border border-line bg-card">
@@ -44,7 +46,7 @@ function OfferTable({ items, open, toggle, roomy }: ListProps & { roomy: boolean
         </caption>
         <thead>
           <tr className="border-b border-line bg-paper text-xs uppercase tracking-wide text-ink-soft">
-            <th scope="col" className="w-14 px-4 py-3 font-semibold">Pos.</th>
+            <th scope="col" className="w-20 px-4 py-3 font-semibold">Pos.</th>
             <th scope="col" className="px-3 py-3 font-semibold">Offerta</th>
             <th scope="col" className="px-3 py-3 text-right font-semibold">
               Costo stimato
@@ -81,7 +83,10 @@ function OfferTable({ items, open, toggle, roomy }: ListProps & { roomy: boolean
             return (
               <Fragment key={it.offer_id}>
                 <tr className={`align-top ${isOpen ? 'bg-paper/70' : 'hover:bg-paper/50'} border-b border-line/70`}>
-                  <td className="px-4 py-4 font-display text-lg font-semibold tabular text-ink-soft">{it.rank}</td>
+                  <td className="px-4 py-4 font-display text-lg font-semibold tabular text-ink-soft">
+                    {it.rank}
+                    {total ? <span className="block font-sans text-[0.7rem] font-normal">di {total}</span> : null}
+                  </td>
                   <td className="max-w-[26rem] px-3 py-4">
                     <p className="font-semibold leading-snug">{it.name}</p>
                     <p className="text-sm text-ink-soft">{it.supplier}</p>
@@ -100,13 +105,13 @@ function OfferTable({ items, open, toggle, roomy }: ListProps & { roomy: boolean
                   {roomy && <td className="px-3 py-4 text-right text-sm tabular text-ink-soft">{deltaText(it.delta_vs_best_eur)}</td>}
                   {roomy ? (
                     <>
-                      <td className="whitespace-nowrap px-3 py-4 text-right text-sm tabular">{formatEnergyPrice(it.energy_price_eur_kwh, it.energy_price_kind)}</td>
+                      <td className="px-3 py-4 text-right text-sm tabular"><span className="whitespace-nowrap"><EnergyPrice item={it} noteClassName="mt-0.5 ml-auto block max-w-[11rem] whitespace-normal text-[0.7rem] font-normal leading-snug text-ink-soft" /></span></td>
                       <td className="whitespace-nowrap px-3 py-4 text-right text-sm font-medium tabular">{formatEurPerKwh(it.eur_per_kwh_effective)}</td>
                     </>
                   ) : (
                     <td className="whitespace-nowrap px-3 py-4 text-right text-sm tabular">
                       <span className="block text-[0.7rem] text-ink-soft">Prezzo energia</span>
-                      <span className="block">{formatEnergyPrice(it.energy_price_eur_kwh, it.energy_price_kind)}</span>
+                      <span className="block"><EnergyPrice item={it} noteClassName="mt-0.5 ml-auto block max-w-[11rem] whitespace-normal text-[0.7rem] font-normal leading-snug text-ink-soft" /></span>
                       <span className="mt-1.5 block text-[0.7rem] text-ink-soft">Costo medio tutto incluso</span>
                       <span className="block font-medium">{formatEurPerKwh(it.eur_per_kwh_effective)}</span>
                     </td>
@@ -146,7 +151,7 @@ function OfferTable({ items, open, toggle, roomy }: ListProps & { roomy: boolean
   )
 }
 
-function OfferCards({ items, open, toggle }: ListProps) {
+function OfferCards({ items, total, open, toggle }: ListProps) {
   return (
     <ol className="space-y-3">
       {items.map((it) => {
@@ -157,7 +162,7 @@ function OfferCards({ items, open, toggle }: ListProps) {
             <div className="flex items-start justify-between gap-3">
               <div className="min-w-0">
                 <p className="text-xs font-semibold uppercase tracking-wide text-ink-soft">
-                  Posizione {it.rank}
+                  Posizione {it.rank}{total ? ` di ${total}` : ''}
                 </p>
                 <p className="mt-0.5 font-semibold leading-snug">{it.name}</p>
                 <p className="text-sm text-ink-soft">{it.supplier}</p>
@@ -172,7 +177,7 @@ function OfferCards({ items, open, toggle }: ListProps) {
             <dl className="mt-3 grid grid-cols-2 gap-3 border-t border-dashed border-line pt-3 text-sm">
               <div>
                 <dt className="text-xs text-ink-soft">Prezzo energia</dt>
-                <dd className="tabular font-medium">{formatEnergyPrice(it.energy_price_eur_kwh, it.energy_price_kind)}</dd>
+                <dd className="tabular font-medium"><EnergyPrice item={it} noteClassName="mt-0.5 block text-[0.7rem] font-normal leading-snug text-ink-soft" /></dd>
               </div>
               <div>
                 <dt className="text-xs text-ink-soft" title={ALL_IN_HINT}>Costo medio tutto incluso</dt>

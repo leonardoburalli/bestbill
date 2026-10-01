@@ -1,5 +1,5 @@
 import { describeBreakEven } from '../lib/breakEven'
-import { ALL_IN_HINT, durationInfo, formatDate, formatDuration, formatEnergyPrice, formatEur, formatEurPerKwh } from '../lib/format'
+import { ALL_IN_HINT, durationInfo, energyPriceText, energyPriceView, formatDate, formatDuration, formatEur, formatEurPerKwh } from '../lib/format'
 import { normalizeOfferUrl } from '../lib/url'
 import type { Discount, OfferSource, PriceType, ResultItem } from '../types'
 import { ClockIcon, ExternalIcon } from './icons'
@@ -13,6 +13,23 @@ export const SOURCE_LABEL: Record<OfferSource, string> = {
 export const PRICE_LABEL: Record<PriceType, string> = {
   fixed: 'Prezzo fisso',
   variable: 'Prezzo variabile',
+}
+
+/** Prezzo energia: dopo gli sconti incondizionati sul prezzo dell'energia, con il listino sotto se c'è uno sconto. */
+export function EnergyPrice({
+  item,
+  noteClassName = 'mt-0.5 block text-[0.7rem] font-normal leading-snug text-ink-soft',
+}: {
+  item: ResultItem
+  noteClassName?: string
+}) {
+  const v = energyPriceView(item)
+  return (
+    <>
+      {v.main}
+      {v.note && <span className={noteClassName}>{v.note}</span>}
+    </>
+  )
 }
 
 export function OfferBadges({ item }: { item: ResultItem }) {
@@ -128,9 +145,15 @@ export function OfferDetails({ item, id }: { item: ResultItem; id: string }) {
           </div>
         </dl>
         <p className="mt-2 text-[0.8rem] text-ink-soft">
-          Prezzo energia: {formatEnergyPrice(item.energy_price_eur_kwh, item.energy_price_kind)}.{' '}
+          Prezzo energia: {energyPriceText(item)}.{' '}
           Costo medio tutto incluso: {formatEurPerKwh(item.eur_per_kwh_effective)}. {ALL_IN_HINT}
         </p>
+        {energyPriceView(item).note && (
+          <p className="mt-1 text-[0.8rem] text-ink-soft">
+            Nel prezzo energia entrano solo gli sconti senza condizioni che riducono il prezzo al kWh. Gli sconti in
+            euro all'anno o una tantum non ci sono, ma sono già compresi nel costo totale.
+          </p>
+        )}
       </div>
 
       <div className="space-y-4 text-[0.95rem]">

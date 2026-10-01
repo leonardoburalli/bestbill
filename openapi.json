@@ -374,6 +374,13 @@
             "description": "6-digit ISTAT comune code; needed to see area-restricted offers.",
             "title": "Istat Comune"
           },
+          "offset": {
+            "default": 0,
+            "description": "Matching results to skip (pagination).",
+            "minimum": 0.0,
+            "title": "Offset",
+            "type": "integer"
+          },
           "residency": {
             "default": "resident",
             "enum": [
@@ -405,6 +412,19 @@
             ],
             "title": "Scenario"
           },
+          "search": {
+            "anyOf": [
+              {
+                "maxLength": 100,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Case- and accent-insensitive substring match on supplier or offer name, applied after ranking and filters (ranks unchanged).",
+            "title": "Search"
+          },
           "top_n": {
             "default": 50,
             "maximum": 200.0,
@@ -435,12 +455,29 @@
             "title": "Excluded Count",
             "type": "integer"
           },
+          "offset": {
+            "default": 0,
+            "title": "Offset",
+            "type": "integer"
+          },
           "results": {
             "items": {
               "$ref": "#/components/schemas/ResultItem"
             },
             "title": "Results",
             "type": "array"
+          },
+          "search_matching": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Filtered offers matching `search`; null without search.",
+            "title": "Search Matching"
           },
           "snapshot_date": {
             "format": "date",
@@ -453,7 +490,7 @@
             "type": "integer"
           },
           "total_matching": {
-            "description": "Eligible offers matching the filters.",
+            "description": "Eligible offers matching the filters (ignores search).",
             "title": "Total Matching",
             "type": "integer"
           }
@@ -1010,7 +1047,7 @@
         "type": "string"
       },
       "ResultItem": {
-        "description": "One ranked offer. ``cost_eur`` is the commodity/retailer cost only,\nbefore VAT (see ``assumptions.cost_label``); ``rank`` and\n``delta_vs_best_eur`` are over all eligible offers, before any filter.",
+        "description": "One ranked offer. ``cost_eur`` is the commodity/retailer cost only,\nbefore VAT (see ``assumptions.cost_label``); ``rank`` and\n``delta_vs_best_eur`` are within the filtered list (never changed by\n``search``).",
         "properties": {
           "band_structure": {
             "$ref": "#/components/schemas/BandStructure"
@@ -1075,6 +1112,23 @@
             "description": "True for offers with no fixed term.",
             "title": "Duration Open Ended",
             "type": "boolean"
+          },
+          "energy_discount_pct": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "(1 - after/listed) x 100, 1 decimal; null when no discount applies.",
+            "title": "Energy Discount Pct"
+          },
+          "energy_price_after_discounts_eur_kwh": {
+            "description": "energy_price_eur_kwh after unconditional percent and EUR/kWh energy discounts (variable offers: spread only). Fixed EUR/year, one-off and conditional discounts are not included.",
+            "title": "Energy Price After Discounts Eur Kwh",
+            "type": "number"
           },
           "energy_price_eur_kwh": {
             "description": "Advertised unit energy price (EUR/kWh, ex VAT): weighted listed price (fixed) or spread over PUN (pun_spread); excludes discounts, fixed fees, extras, dispatching, power fee and losses.",
@@ -1194,6 +1248,8 @@
           "eur_per_kwh_effective",
           "energy_price_eur_kwh",
           "energy_price_kind",
+          "energy_price_after_discounts_eur_kwh",
+          "energy_discount_pct",
           "breakdown",
           "break_even_pun_eur_kwh",
           "break_even_status",

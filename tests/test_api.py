@@ -743,3 +743,79 @@ def test_compare_duration_bounds_validation(client):
 def test_offers_list_has_duration_fields(client):
     items = client.get("/api/offers?limit=5").json()["items"]
     assert all("duration_months" in i and "duration_open_ended" in i for i in items)
+
+
+# -- search / pagination / ranking within filters ----------------------------
+def _compare(client, **kw):
+    r = client.post("/api/compare", json=compare_body(**kw))
+    assert r.status_code == 200
+    return r.json()
+
+
+def test_compare_offset_paging(client):
+    full = _compare(client, top_n=200)["results"]
+    page = _compare(client, top_n=2, offset=1)
+    assert [x["offer_id"] for x in page["results"]] == [
+        x["offer_id"] for x in full[1:3]
+    ]
+    assert page["offset"] == 1
+
+
+def test_compare_rank_and_delta_within_filters(client):
+    body = _compare(client, filters={"price_type": "variable"}, top_n=200)
+    res = body["results"]
+    assert [x["rank"] for x in res] == list(range(1, len(res) + 1))
+    assert res[0]["delta_vs_best_eur"] == 0
+    assert res[-1]["delta_vs_best_eur"] == pytest.approx(
+        res[-1]["cost_eur"] - res[0]["cost_eur"]
+    )
+
+
+def test_compare_search_keeps_ranks_and_counts(client):
+    full = _compare(client, top_n=200)
+    target = full["results"][-1]
+    word = target["supplier"].split()[0].upper()
+    body = _compare(client, search=f"  {word}  ", top_n=200)
+    by_id = {x["offer_id"]: x for x in full["results"]}
+    assert body["search_matching"] == len(body["results"]) >= 1
+    assert body["total_matching"] == full["total_matching"]
+    for x in body["results"]:
+        assert x["rank"] == by_id[x["offer_id"]]["rank"]
+        assert x["delta_vs_best_eur"] == by_id[x["offer_id"]]["delta_vs_best_eur"]
+    assert target["offer_id"] in {x["offer_id"] for x in body["results"]}
+    assert full["search_matching"] is None
+
+
+def test_compare_search_accent_insensitive_and_empty(client):
+    full = _compare(client, top_n=200)
+    name = full["results"][0]["name"]
+    folded = _compare(client, search=name.upper())
+    assert full["results"][0]["offer_id"] in {x["offer_id"] for x in folded["results"]}
+    assert _compare(client, search="   ")["search_matching"] is None
+    none = _compare(client, search="zzzz-nope")
+    assert none["results"] == [] and none["search_matching"] == 0
+
+
+def test_search_fold_strips_accents():
+    from bestbill.api import routes
+
+    assert routes._fold("Società ÈNERGIA") == "societa energia"
+
+
+def test_compare_new_validation(client):
+    assert client.post("/api/compare", json=compare_body(offset=-1)).status_code == 422
+    assert (
+        client.post("/api/compare", json=compare_body(search="x" * 101)).status_code
+        == 422
+    )
+
+
+def test_compare_after_discount_fields_present(client):
+    for x in _compare(client, top_n=200)["results"]:
+        assert (
+            x["energy_price_after_discounts_eur_kwh"]
+            <= x["energy_price_eur_kwh"] + 1e-12
+        )
+        assert (x["energy_discount_pct"] is None) == (
+            x["energy_price_after_discounts_eur_kwh"] >= x["energy_price_eur_kwh"]
+        )

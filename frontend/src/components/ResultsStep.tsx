@@ -3,6 +3,7 @@ import type { ApiError } from '../api'
 import type { useComparison } from '../hooks'
 import { formatEur, formatKwh } from '../lib/format'
 import { buildResultsCsv, downloadText } from '../lib/csv'
+import { PAGE_SIZE } from './formState'
 import { formatMonthShort } from '../lib/months'
 import type { CompareFilters, CompareResponse, Scenario } from '../types'
 import AssumptionsStatement from './AssumptionsStatement'
@@ -11,6 +12,7 @@ import ExcludedOffers from './ExcludedOffers'
 import { ArrowLeftIcon, DownloadIcon, RefreshIcon } from './icons'
 import OfferList from './OfferList'
 import ResultControls from './ResultControls'
+import SearchBox from './SearchBox'
 import { errorMessage, ResultsError, ResultsSkeleton } from './ResultStates'
 import { btnQuiet, btnSecondary, Notice, Spinner } from './ui'
 
@@ -35,6 +37,11 @@ export default function ResultsStep({
   filters,
   onScenario,
   onFilters,
+  searchCmp,
+  searchText,
+  searchTerm,
+  onSearchText,
+  onLoadMore,
   onRetry,
   onBack,
 }: {
@@ -46,6 +53,15 @@ export default function ResultsStep({
   filters: CompareFilters
   onScenario: (s: Scenario) => void
   onFilters: (f: CompareFilters) => void
+  /** Second comparison, used only while a search is active (same filters, plus `search`). */
+  searchCmp: Comparison
+  /** What is typed in the box. */
+  searchText: string
+  /** The search currently applied (debounced); '' = no search. */
+  searchTerm: string
+  onSearchText: (v: string) => void
+  /** Next page of whichever list is on screen (search hits while searching, otherwise all offers). */
+  onLoadMore: () => void
   onRetry: () => void
   onBack: () => void
 }) {
@@ -53,11 +69,21 @@ export default function ResultsStep({
   const loading = status === 'loading'
   const filtersActive = !!(filters.price_type || filters.source || filters.min_duration_months || filters.max_duration_months)
 
+  // La lista mostra le offerte trovate dalla ricerca; miglior offerta e grafico restano sempre
+  // quelli del confronto senza ricerca (`data`).
+  const searching = searchTerm !== ''
+  const listCmp = searching ? searchCmp : comparison
+  const listData = searching ? searchCmp.data : data
+  const listLoading = loading || (searching && searchCmp.status === 'loading')
+  const listTotal = listData ? (searching ? (listData.search_matching ?? listData.results.length) : listData.total_matching) : 0
+  const remaining = listData ? listTotal - listData.results.length : 0
+  const sentence = (n: number) => `${n} ${n === 1 ? 'offerta' : 'offerte'}`
+
   const exportCsv = () => {
-    if (!data) return
+    if (!listData) return
     downloadText(
-      `bestbill-offerte-${data.snapshot_date}.csv`,
-      buildResultsCsv(data.results, data.assumptions),
+      `bestbill-offerte-${listData.snapshot_date}.csv`,
+      buildResultsCsv(listData.results, listData.assumptions),
       'text/csv',
     )
   }
@@ -67,7 +93,11 @@ export default function ResultsStep({
     : status === 'error'
       ? 'Non è stato possibile completare il confronto.'
       : data
-        ? data.results.length > 0
+        ? searching && searchCmp.data
+          ? searchCmp.data.results.length > 0
+            ? `Trovate ${sentence(searchCmp.data.search_matching ?? searchCmp.data.results.length)} per «${searchTerm}».`
+            : `Nessuna offerta di «${searchTerm}» con questi filtri.`
+          : data.results.length > 0
           ? `Trovate ${data.total_matching} offerte. Per i prossimi 12 mesi la più economica è ${data.results[0].name} di ${data.results[0].supplier}, ${formatEur(data.results[0].cost_eur)}.`
           : 'Nessuna offerta trovata con questi criteri.'
         : ''
@@ -105,7 +135,7 @@ export default function ResultsStep({
             <AssumptionsStatement a={data.assumptions} snapshotDate={data.snapshot_date} />
 
             {data.results.length > 0 && (
-              <BestOffer item={data.results[0]} next={data.results[0].rank === 1 ? data.results[1] : undefined} />
+              <BestOffer item={data.results[0]} next={data.results[1]} filtered={filtersActive} />
             )}
           </div>
 
@@ -149,14 +179,12 @@ export default function ResultsStep({
                   <div>
                     <h2 className="font-display text-2xl font-semibold">Tutte le offerte, dalla più economica</h2>
                     <p className="mt-1 text-sm text-ink-soft">
-                      {data.results.length < data.total_matching
-                        ? `Mostro le prime ${data.results.length} di ${data.total_matching}`
-                        : `${data.total_matching} ${data.total_matching === 1 ? 'offerta' : 'offerte'}`}
+                      {sentence(data.total_matching)}
                       {data.total_matching < data.total_eligible ? ` (su ${data.total_eligible} adatte a te)` : ''}. La
-                      differenza è calcolata rispetto alla migliore in assoluto.
+                      differenza è calcolata rispetto alla più economica{filtersActive ? ' con questi filtri' : ''}.
                     </p>
                   </div>
-                  <button type="button" onClick={exportCsv} className={btnSecondary}>
+                  <button type="button" onClick={exportCsv} disabled={!listData || listData.results.length === 0} className={btnSecondary}>
                     <DownloadIcon size={18} /> Scarica CSV
                   </button>
                 </div>
@@ -173,7 +201,80 @@ export default function ResultsStep({
                   </Suspense>
                 </section>
 
-                <OfferList items={data.results} />
+                <div className="space-y-4">
+                  <SearchBox value={searchText} busy={searching && searchCmp.status === 'loading'} onChange={onSearchText} />
+
+                  {searching && listData && listData.results.length > 0 && (
+                    <p className="text-sm text-ink-soft">
+                      {sentence(listTotal)} per «{searchTerm}» su {data.total_matching}.
+                    </p>
+                  )}
+                </div>
+
+                <div className={`space-y-4 transition-opacity duration-200 ${listLoading ? 'opacity-55' : ''}`} aria-busy={listLoading}>
+                  {searching && searchCmp.status === 'error' && searchCmp.error && (
+                    <InlineError error={searchCmp.error} onRetry={onRetry} />
+                  )}
+
+                  {searching && !listData && searchCmp.status !== 'error' && (
+                    <div role="status" className="space-y-3">
+                      <span className="sr-only">Cerco «{searchTerm}»…</span>
+                      {[0, 1].map((i) => (
+                        <div key={i} className="h-24 animate-pulse rounded-2xl bg-paper-deep/50" />
+                      ))}
+                    </div>
+                  )}
+
+                  {listData && listData.results.length === 0 && searchCmp.status !== 'error' && (
+                    <Notice
+                      tone="info"
+                      title={`Nessuna offerta di «${searchTerm}» con questi filtri`}
+                      action={
+                        <>
+                          <button type="button" onClick={() => onSearchText('')} className={btnSecondary}>
+                            Cancella la ricerca
+                          </button>
+                          {filtersActive && (
+                            <button type="button" onClick={() => onFilters({})} className={btnSecondary}>
+                              Togli i filtri
+                            </button>
+                          )}
+                        </>
+                      }
+                    >
+                      Controlla come è scritto il nome oppure prova con una parte sola.
+                      {filtersActive ? ' Se non basta, togli i filtri: l\'offerta potrebbe essere stata esclusa da quelli.' : ''}
+                    </Notice>
+                  )}
+
+                  {listData && listData.results.length > 0 && (
+                    <>
+                      <OfferList items={listData.results} total={listData.total_matching} />
+
+                      <div className="flex flex-col items-center gap-2 pt-1">
+                        <p className="text-sm text-ink-soft" aria-live="polite">
+                          Mostrate {listData.results.length} di {listTotal}
+                        </p>
+                        {listCmp.moreError && (
+                          <p role="alert" className="text-sm text-brick">
+                            {errorMessage(listCmp.moreError).title}. Riprova.
+                          </p>
+                        )}
+                        {remaining > 0 && (
+                          <button
+                            type="button"
+                            onClick={onLoadMore}
+                            disabled={listLoading || listCmp.loadingMore}
+                            className={btnSecondary}
+                          >
+                            {listCmp.loadingMore ? <Spinner size={16} /> : null}
+                            {listCmp.loadingMore ? 'Carico…' : `Mostra altre ${Math.min(PAGE_SIZE, remaining)}`}
+                          </button>
+                        )}
+                      </div>
+                    </>
+                  )}
+                </div>
               </>
             )}
 

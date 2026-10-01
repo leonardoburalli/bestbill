@@ -62,6 +62,26 @@ Codes declared by one offer are additive (no overlap by construction). Unit €/
 - Sconto/CODICE_COMPONENTE_FASCIA (per-band discount targeting) isn't
   implemented; a priced Sconto carrying it excludes the whole offer.
 
+## After-discount energy price (display field)
+`energy_price_after_discounts_eur_kwh` = listed `energy_price_eur_kwh` minus the
+per-kWh value of the **unconditional, priced** discounts that act on the energy
+price: percent (UM 06) and €/kWh (UM 03). Values come from
+`policy.discount_annual_value_eur` (bands, `DURATA` proration over the 12
+months), so it matches the cost calculation. Fixed €/year, one-off and
+conditional discounts are excluded (not a unit price). Percent base = the
+listed energy amount; for variable offers that is the **spread only** (never
+the PUN, even though the calculator's percent base includes PUN×1.10).
+Clamped at 0. `energy_discount_pct` = (1 − after/listed)×100, 1 decimal, null
+when after ≥ listed.
+
+## Ranking within filters, search and pagination
+`/api/compare`: `rank` is the 1-based position in the *filtered* list
+(price_type/source/duration filters) and `delta_vs_best_eur` is the cost minus
+the first filtered offer's cost. `search` (case- and accent-insensitive
+substring on supplier or offer name) is applied afterwards and never changes
+rank/delta; `total_matching` ignores it, `search_matching` counts the hits.
+`offset`/`top_n` page over the filtered list (or the search hits, in rank order).
+
 ## Offer duration
 
 Each offer exposes `duration_months` (months the economic conditions are

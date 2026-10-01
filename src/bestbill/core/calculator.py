@@ -16,6 +16,7 @@ from bestbill.core.models import (
     CostBreakdown,
     CustomerType,
     Discount,
+    DiscountUnit,
     Flat,
     Historical,
     LossesMode,
@@ -298,6 +299,31 @@ def _energy_price_eur_kwh(
     return amount / total_kwh
 
 
+def _energy_price_after_discounts_eur_kwh(
+    offer: Offer,
+    monthly_band_kwh: list[dict[str, float]],
+    total_kwh: float,
+    listed: float,
+) -> float:
+    """``listed`` minus the per-kWh value of the unconditional, priced
+    discounts acting on the energy price (percent and €/kWh; fixed €/year
+    and one-off discounts are not a unit price). Values come from
+    ``policy.discount_annual_value_eur`` (so bands and duration limits
+    behave as in the cost). The percent base is the listed energy amount --
+    for variable offers the spread only, never the PUN (docs/pricing-policy.md).
+    """
+    if total_kwh <= 0:
+        return listed
+    base = listed * total_kwh
+    monthly_kwh = [sum(band_kwh.values()) for band_kwh in monthly_band_kwh]
+    saved = sum(
+        policy.discount_annual_value_eur(d, total_kwh, base, monthly_kwh)
+        for d in _priced_discounts(offer)
+        if d.unit in (DiscountUnit.PERCENT, DiscountUnit.EUR_KWH)
+    )
+    return max(0.0, listed - saved / total_kwh)
+
+
 def _offer_breakdown(
     offer: Offer,
     monthly_band_kwh: list[dict[str, float]],
@@ -553,6 +579,15 @@ def compare(
                 best_fixed_cost,
                 committed_power_kw,
             )
+        listed_price = _energy_price_eur_kwh(offer, offer_band_kwh[offer.id], total_kwh)
+        after_price = _energy_price_after_discounts_eur_kwh(
+            offer, offer_band_kwh[offer.id], total_kwh, listed_price
+        )
+        discount_pct = (
+            round((1 - after_price / listed_price) * 100, 1)
+            if after_price < listed_price
+            else None
+        )
         results.append(
             OfferResult(
                 offer_id=offer.id,
@@ -562,9 +597,9 @@ def compare(
                 cost_eur=cost,
                 delta_vs_best_eur=cost - best_cost,
                 eur_per_kwh_effective=cost / total_kwh if total_kwh > 0 else 0.0,
-                energy_price_eur_kwh=_energy_price_eur_kwh(
-                    offer, offer_band_kwh[offer.id], total_kwh
-                ),
+                energy_price_eur_kwh=listed_price,
+                energy_price_after_discounts_eur_kwh=after_price,
+                energy_discount_pct=discount_pct,
                 energy_price_kind=(
                     "fixed" if offer.price_type is PriceType.FIXED else "pun_spread"
                 ),

@@ -43,11 +43,26 @@ describe('buildResultsCsv', () => {
     expect(header).toContain('Prezzo energia (€/kWh)')
     expect(header).toContain('Costo medio tutto incluso (€/kWh)')
     expect(header).not.toContain('Costo effettivo (EUR/kWh)')
-    expect(lines[1]).toContain(';0,00;0,1000;0,1370;')
+    expect(lines[1]).toContain(';0,00;0,1000;0,1000;0,1370;')
   })
   it('prefixes PUN for spread offers', () => {
     const p = buildResultsCsv([r({ price_type: 'variable', energy_price_kind: 'pun_spread', energy_price_eur_kwh: 0.012 })], assumptions)
-    expect(p.split('\r\n')[1]).toContain(';PUN + 0,0120;0,1370;')
+    expect(p.split('\r\n')[1]).toContain(';PUN + 0,0120;PUN + 0,0120;0,1370;')
+  })
+  it('has a discounted energy price column right after the listed one', () => {
+    const header = lines[0].slice(1).split(';')
+    expect(header.indexOf('Prezzo energia scontato (€/kWh)')).toBe(header.indexOf('Prezzo energia (€/kWh)') + 1)
+    const d = buildResultsCsv(
+      [
+        r({ energy_price_eur_kwh: 0.2079, energy_price_after_discounts_eur_kwh: 0.1455, energy_discount_pct: 30 }),
+        r({ price_type: 'variable', energy_price_kind: 'pun_spread', energy_price_eur_kwh: 0.022, energy_price_after_discounts_eur_kwh: 0.0154 }),
+        r({ price_type: 'variable', energy_price_kind: 'pun_spread', energy_price_eur_kwh: 0.01, energy_price_after_discounts_eur_kwh: -0.001 }),
+      ],
+      assumptions,
+    ).split('\r\n')
+    expect(d[1]).toContain(';0,2079;0,1455;0,1370;')
+    expect(d[2]).toContain(';PUN + 0,0220;PUN + 0,0154;0,1370;')
+    expect(d[3]).toContain(';PUN + 0,0100;PUN − 0,0010;0,1370;')
   })
   it('has a Durata (mesi) column: number or "non specificata"', () => {
     const c = buildResultsCsv(
