@@ -167,6 +167,8 @@ export function buildRequest(
   if (filters.source) f.source = filters.source
   if (typeof filters.min_duration_months === 'number' && filters.min_duration_months > 0)
     f.min_duration_months = filters.min_duration_months
+  if (typeof filters.max_duration_months === 'number' && filters.max_duration_months > 0)
+    f.max_duration_months = filters.max_duration_months
   return {
     consumption: toRequestMonths(rowsOf(form), form.useBands),
     residency: form.residency,

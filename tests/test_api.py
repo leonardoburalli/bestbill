@@ -705,6 +705,41 @@ def test_compare_min_duration_validation(client):
         assert r.status_code == 422
 
 
+def test_compare_exact_and_over_duration(client):
+    exact = client.post(
+        "/api/compare",
+        json=compare_body(
+            top_n=200, filters={"min_duration_months": 12, "max_duration_months": 12}
+        ),
+    ).json()
+    assert exact["results"]
+    assert all(
+        x["duration_months"] == 12 and not x["duration_open_ended"]
+        for x in exact["results"]
+    )
+    over = client.post(
+        "/api/compare",
+        json=compare_body(top_n=200, filters={"min_duration_months": 13}),
+    ).json()
+    for x in over["results"]:
+        assert not x["duration_open_ended"]
+        assert x["duration_months"] > 12
+
+
+def test_compare_duration_bounds_validation(client):
+    r = client.post(
+        "/api/compare",
+        json=compare_body(
+            filters={"min_duration_months": 24, "max_duration_months": 12}
+        ),
+    )
+    assert r.status_code == 422
+    r = client.post(
+        "/api/compare", json=compare_body(filters={"max_duration_months": 0})
+    )
+    assert r.status_code == 422
+
+
 def test_offers_list_has_duration_fields(client):
     items = client.get("/api/offers?limit=5").json()["items"]
     assert all("duration_months" in i and "duration_open_ended" in i for i in items)

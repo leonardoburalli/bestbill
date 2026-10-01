@@ -303,11 +303,8 @@ def compare_offers(body: CompareRequest, snap: Snapshot) -> CompareResponse:
             body.filters.source is None
             or by_id[r.offer_id].source.value == body.filters.source
         )
-        and (
-            body.filters.min_duration_months is None
-            or by_id[r.offer_id].guarantees_min_duration(
-                body.filters.min_duration_months
-            )
+        and by_id[r.offer_id].duration_within(
+            body.filters.min_duration_months, body.filters.max_duration_months
         )
     ]
     items: list[ResultItem] = []

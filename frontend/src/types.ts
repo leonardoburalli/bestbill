@@ -92,8 +92,10 @@ export interface MonthInput {
 export interface CompareFilters {
   price_type?: PriceType | null
   source?: SourceFilter | null
-  /** Keep offers whose duration is at least this many months. Open-ended/unknown are excluded by the server. */
+  /** Keep offers whose duration is at least / at most this many months.
+   *  When either is set, offers with an unspecified duration are excluded by the server. */
   min_duration_months?: number | null
+  max_duration_months?: number | null
 }
 
 export type Scenario = Historical | Scaled | Flat

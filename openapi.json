@@ -281,6 +281,20 @@
       "CompareFilters": {
         "additionalProperties": false,
         "properties": {
+          "max_duration_months": {
+            "anyOf": [
+              {
+                "maximum": 120.0,
+                "minimum": 1.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Keep only offers whose economic conditions are guaranteed for at most this many months (combine with min_duration_months for an exact duration). Open-ended and unknown-duration offers are EXCLUDED.",
+            "title": "Max Duration Months"
+          },
           "min_duration_months": {
             "anyOf": [
               {

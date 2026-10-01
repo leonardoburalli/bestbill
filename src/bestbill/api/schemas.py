@@ -186,6 +186,21 @@ class CompareFilters(BaseModel):
         "unknown-duration offers are EXCLUDED, since they do not guarantee "
         "the conditions for a fixed period.",
     )
+    max_duration_months: int | None = Field(
+        default=None,
+        ge=1,
+        le=120,
+        description="Keep only offers whose economic conditions are guaranteed "
+        "for at most this many months (combine with min_duration_months for an "
+        "exact duration). Open-ended and unknown-duration offers are EXCLUDED.",
+    )
+
+    @model_validator(mode="after")
+    def _check_duration_bounds(self) -> CompareFilters:
+        lo, hi = self.min_duration_months, self.max_duration_months
+        if lo is not None and hi is not None and lo > hi:
+            raise ValueError("La durata minima non può superare la durata massima.")
+        return self
 
 
 class CompareRequest(BaseModel):
