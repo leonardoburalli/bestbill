@@ -654,6 +654,12 @@ class OfferResult(BaseModel):
     #: and losses (and the PUN index itself).
     energy_price_eur_kwh: float
     energy_price_kind: Literal["fixed", "pun_spread"]
+    #: ``energy_price_eur_kwh`` after unconditional, priced discounts that act
+    #: on the energy price (percent and €/kWh); equals it when there are none.
+    #: For variable offers the discounts apply to the spread only.
+    energy_price_after_discounts_eur_kwh: float
+    #: (1 - after/listed) × 100, 1 decimal, when after < listed; else ``None``.
+    energy_discount_pct: float | None = None
     rank: int = Field(ge=1)
     break_even_pun_eur_kwh: float | None = None
     #: Why ``break_even_pun_eur_kwh`` is (or isn't) set -- see

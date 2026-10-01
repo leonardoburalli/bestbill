@@ -2,8 +2,8 @@
  * BestBill: due passi. 1) consumi  2) offerte.
  * Lo stato del modulo vive qui, così "Modifica i consumi" non perde nulla.
  */
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { useApiStatus, useComparison, useComuniSearch } from './hooks'
+import { useEffect, useMemo, useRef, useState } from 'react'
+import { useApiStatus, useComparison, useComuniSearch, useDebouncedValue } from './hooks'
 import { parseItalianNumber } from './lib/consumption'
 import { buildMonths } from './lib/months'
 import type { CompareFilters, Scenario } from './types'
@@ -18,6 +18,13 @@ export default function App() {
   const api = useApiStatus()
   const search = useComuniSearch()
   const comparison = useComparison()
+  // Ricerca per nome: un secondo confronto, solo per l'elenco. Miglior offerta e grafico restano su `comparison`.
+  const searchCmp = useComparison()
+  const [searchText, setSearchText] = useState('')
+  const typed = searchText.trim()
+  const debounced = useDebouncedValue(typed, 300)
+  // Svuotare il campo vale subito, senza attendere i 300 ms.
+  const searchTerm = typed === '' ? '' : debounced
   const cf = useConsumptionForm()
 
   const [step, setStep] = useState<Step>('input')
@@ -32,11 +39,14 @@ export default function App() {
   const { form, check, setAttempted, setServerErrors } = cf
   const comune = search.selected
 
-  const run = useCallback(
-    (s: Scenario, f: CompareFilters) => comparison.run(buildRequest(form, comune, s, f)),
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [comparison.run, form, comune],
-  )
+  const run = (s: Scenario, f: CompareFilters) => {
+    comparison.run(buildRequest(form, comune, s, f))
+    if (searchTerm) searchCmp.run(buildRequest(form, comune, s, f, searchTerm))
+  }
+  const loadMore = () =>
+    (searchTerm ? searchCmp : comparison).loadMore(
+      buildRequest(form, comune, scenario, filters, searchTerm || undefined),
+    )
 
   const submit = () => {
     setAttempted(true)
@@ -46,6 +56,7 @@ export default function App() {
     }
     setFresh(true)
     setStep('results')
+    searchCmp.reset()
     run(scenario, filters)
   }
 
@@ -57,6 +68,17 @@ export default function App() {
     setFilters(f)
     run(scenario, f)
   }
+
+  // Cambia la ricerca (dopo i 300 ms): si riparte dalla prima pagina, con filtri e scenario attuali.
+  const prevTerm = useRef('')
+  useEffect(() => {
+    if (prevTerm.current === searchTerm) return
+    prevTerm.current = searchTerm
+    if (step !== 'results') return
+    if (searchTerm) searchCmp.run(buildRequest(form, comune, scenario, filters, searchTerm))
+    else searchCmp.reset()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [searchTerm])
 
   // Errori 422 sui dati dei consumi: si torna al passo 1 con gli errori sulle righe giuste.
   const handled = useRef<unknown>(null)
@@ -125,6 +147,11 @@ export default function App() {
             filters={filters}
             onScenario={changeScenario}
             onFilters={changeFilters}
+            searchCmp={searchCmp}
+            searchText={searchText}
+            searchTerm={searchTerm}
+            onSearchText={setSearchText}
+            onLoadMore={loadMore}
             onRetry={() => run(scenario, filters)}
             onBack={() => setStep('input')}
           />

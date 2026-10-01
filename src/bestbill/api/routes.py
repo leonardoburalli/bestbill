@@ -5,6 +5,7 @@ logged: no route logs request bodies or values derived from them.
 from __future__ import annotations
 
 import io
+import unicodedata
 import zipfile
 from collections import Counter
 from datetime import date
@@ -268,6 +269,12 @@ def parse(
     return ParseResult(profiles=profiles, skipped=skipped)
 
 
+def _fold(text: str) -> str:
+    """Case- and accent-insensitive form for substring search."""
+    decomposed = unicodedata.normalize("NFKD", text.casefold())
+    return "".join(c for c in decomposed if not unicodedata.combining(c))
+
+
 @router.post(
     "/compare",
     responses={
@@ -307,8 +314,23 @@ def compare_offers(body: CompareRequest, snap: Snapshot) -> CompareResponse:
             body.filters.min_duration_months, body.filters.max_duration_months
         )
     ]
+    best_cost = matching[0].cost_eur if matching else 0.0
+    matching = [
+        r.model_copy(update={"rank": rank, "delta_vs_best_eur": r.cost_eur - best_cost})
+        for rank, r in enumerate(matching, start=1)
+    ]
+    hits = matching
+    search_matching: int | None = None
+    if body.search is not None:
+        needle = _fold(body.search)
+        hits = [
+            r
+            for r in matching
+            if needle in _fold(r.supplier) or needle in _fold(r.name)
+        ]
+        search_matching = len(hits)
     items: list[ResultItem] = []
-    for r in matching[: body.top_n]:
+    for r in hits[body.offset : body.offset + body.top_n]:
         offer = by_id[r.offer_id]
         items.append(
             ResultItem(
@@ -328,6 +350,8 @@ def compare_offers(body: CompareRequest, snap: Snapshot) -> CompareResponse:
         assumptions=comparison.assumptions,
         total_eligible=len(comparison.results),
         total_matching=len(matching),
+        search_matching=search_matching,
+        offset=body.offset,
         results=items,
         excluded_count=len(comparison.excluded),
         excluded_by_reason=dict(reasons),

@@ -122,6 +122,10 @@ export interface CompareRequest {
   scenario?: Scenario
   filters?: CompareFilters
   top_n?: number // 1..200
+  /** Skip this many matching results (pagination). */
+  offset?: number
+  /** Case/accent-insensitive match on supplier or offer name. Applied after ranking: ranks do not change. */
+  search?: string | null
 }
 
 // ── Compare Response ───────────────────────────────────────────────────────
@@ -172,6 +176,11 @@ export interface ResultItem {
   /** Advertised energy unit price (before discounts, no fixed fees). For 'pun_spread' it is only the spread over PUN. */
   energy_price_eur_kwh: number
   energy_price_kind: EnergyPriceKind
+  /** Energy price after unconditional discounts that act on the energy price (same base as energy_price_eur_kwh).
+   *  May be missing on older API versions: fall back to energy_price_eur_kwh. */
+  energy_price_after_discounts_eur_kwh?: number
+  /** % discount between listed and after-discount price (1 decimal); null when no such discount. */
+  energy_discount_pct?: number | null
   breakdown: CostBreakdown
   break_even_pun_eur_kwh: number | null
   break_even_status: BreakEvenStatus | null
@@ -202,7 +211,11 @@ export interface CompareResponse {
   snapshot_date: string
   assumptions: Assumptions
   total_eligible: number
+  /** Offers matching the filters (ignores search). */
   total_matching: number
+  /** Filtered offers matching `search`; null when no search. May be missing on older API versions. */
+  search_matching?: number | null
+  offset?: number
   results: ResultItem[]
   excluded_count: number
   excluded_by_reason: Record<string, number>

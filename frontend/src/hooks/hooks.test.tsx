@@ -125,6 +125,98 @@ describe('useComparison', () => {
   })
 })
 
+describe('useComparison paging', () => {
+  const item = (id: string, rank: number) => ({ offer_id: id, rank }) as CompareResponse['results'][number]
+  const page = (ids: string[], extra: Partial<CompareResponse> = {}) =>
+    ({ total_matching: 5, results: ids.map((id, i) => item(id, i + 1)), ...extra }) as CompareResponse
+
+  it('loadMore asks for offset = loaded count and appends; status stays success', async () => {
+    mocked.compare.mockResolvedValueOnce(page(['a', 'b']))
+    const { result } = renderHook(() => useComparison())
+    await act(async () => result.current.run({ top_n: 2 } as never))
+    expect(result.current.data?.results.map((r) => r.offer_id)).toEqual(['a', 'b'])
+
+    let resolve!: (r: CompareResponse) => void
+    mocked.compare.mockImplementationOnce(() => new Promise<CompareResponse>((r) => (resolve = r)))
+    act(() => result.current.loadMore({ top_n: 2 } as never))
+    expect(mocked.compare.mock.calls[1][0]).toMatchObject({ top_n: 2, offset: 2 })
+    expect(result.current.loadingMore).toBe(true)
+    expect(result.current.status).toBe('success')
+    expect(result.current.data?.results).toHaveLength(2) // old rows stay while loading
+
+    await act(async () => resolve(page(['c', 'd', 'b'])))
+    expect(result.current.loadingMore).toBe(false)
+    // 'b' is repeated by the server: not shown twice
+    expect(result.current.data?.results.map((r) => r.offer_id)).toEqual(['a', 'b', 'c', 'd'])
+  })
+
+  it('drops a late page when a newer run started', async () => {
+    mocked.compare.mockResolvedValueOnce(page(['a', 'b']))
+    const { result } = renderHook(() => useComparison())
+    await act(async () => result.current.run({} as never))
+
+    let resolveMore!: (r: CompareResponse) => void
+    const signals: AbortSignal[] = []
+    mocked.compare.mockImplementationOnce((_b, s) => {
+      signals.push(s!)
+      return new Promise<CompareResponse>((r) => (resolveMore = r))
+    })
+    act(() => result.current.loadMore({} as never))
+
+    mocked.compare.mockResolvedValueOnce(page(['x', 'y']))
+    await act(async () => result.current.run({} as never)) // e.g. a filter changed
+    expect(signals[0].aborted).toBe(true)
+    expect(result.current.loadingMore).toBe(false)
+
+    await act(async () => resolveMore(page(['c', 'd']))) // the old page arrives late
+    expect(result.current.data?.results.map((r) => r.offer_id)).toEqual(['x', 'y'])
+  })
+
+  it('ignores loadMore while a run or another page is in flight, and with no data', async () => {
+    const { result } = renderHook(() => useComparison())
+    act(() => result.current.loadMore({} as never))
+    expect(mocked.compare).not.toHaveBeenCalled()
+
+    mocked.compare.mockResolvedValueOnce(page(['a']))
+    await act(async () => result.current.run({} as never))
+    mocked.compare.mockImplementationOnce((_b, s) => abortable(s))
+    act(() => result.current.loadMore({} as never))
+    act(() => result.current.loadMore({} as never))
+    expect(mocked.compare).toHaveBeenCalledTimes(2)
+
+    mocked.compare.mockImplementationOnce((_b, s) => abortable(s))
+    act(() => result.current.run({} as never))
+    act(() => result.current.loadMore({} as never))
+    expect(mocked.compare).toHaveBeenCalledTimes(3)
+  })
+
+  it('a failed page keeps the rows and reports moreError, not a full error', async () => {
+    mocked.compare.mockResolvedValueOnce(page(['a']))
+    const { result } = renderHook(() => useComparison())
+    await act(async () => result.current.run({} as never))
+    mocked.compare.mockRejectedValueOnce(new ApiError('down', 0))
+    await act(async () => result.current.loadMore({} as never))
+    expect(result.current.status).toBe('success')
+    expect(result.current.error).toBeNull()
+    expect(result.current.moreError?.status).toBe(0)
+    expect(result.current.data?.results).toHaveLength(1)
+    expect(result.current.loadingMore).toBe(false)
+  })
+
+  it('reset drops data and cancels a page in flight', async () => {
+    mocked.compare.mockResolvedValueOnce(page(['a']))
+    const { result } = renderHook(() => useComparison())
+    await act(async () => result.current.run({} as never))
+    let resolveMore!: (r: CompareResponse) => void
+    mocked.compare.mockImplementationOnce(() => new Promise<CompareResponse>((r) => (resolveMore = r)))
+    act(() => result.current.loadMore({} as never))
+    act(() => result.current.reset())
+    await act(async () => resolveMore(page(['c'])))
+    expect(result.current.data).toBeNull()
+    expect(result.current.status).toBe('idle')
+  })
+})
+
 describe('useApiStatus', () => {
   const okHealth: Health = { status: 'ok', catalog_loaded: true, snapshot_date: '2026-09-29', catalog_age_days: 1 }
 

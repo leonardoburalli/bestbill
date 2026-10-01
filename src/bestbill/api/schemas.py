@@ -221,6 +221,22 @@ class CompareRequest(BaseModel):
     scenario: Scenario = Field(default_factory=Historical)
     filters: CompareFilters = Field(default_factory=CompareFilters)
     top_n: int = Field(default=50, ge=1, le=200)
+    offset: int = Field(
+        default=0, ge=0, description="Matching results to skip (pagination)."
+    )
+    search: str | None = Field(
+        default=None,
+        max_length=100,
+        description="Case- and accent-insensitive substring match on supplier "
+        "or offer name, applied after ranking and filters (ranks unchanged).",
+    )
+
+    @field_validator("search")
+    @classmethod
+    def _trim_search(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        return value.strip() or None
 
     @field_validator("consumption")
     @classmethod
@@ -245,7 +261,8 @@ class CompareRequest(BaseModel):
 class ResultItem(BaseModel):
     """One ranked offer. ``cost_eur`` is the commodity/retailer cost only,
     before VAT (see ``assumptions.cost_label``); ``rank`` and
-    ``delta_vs_best_eur`` are over all eligible offers, before any filter.
+    ``delta_vs_best_eur`` are within the filtered list (never changed by
+    ``search``).
     """
 
     offer_id: str
@@ -269,6 +286,15 @@ class ResultItem(BaseModel):
         "discounts, fixed fees, extras, dispatching, power fee and losses."
     )
     energy_price_kind: Literal["fixed", "pun_spread"]
+    energy_price_after_discounts_eur_kwh: float = Field(
+        description="energy_price_eur_kwh after unconditional percent and "
+        "EUR/kWh energy discounts (variable offers: spread only). Fixed "
+        "EUR/year, one-off and conditional discounts are not included."
+    )
+    energy_discount_pct: float | None = Field(
+        description="(1 - after/listed) x 100, 1 decimal; null when no "
+        "discount applies."
+    )
     breakdown: CostBreakdown
     break_even_pun_eur_kwh: float | None
     break_even_status: BreakEvenStatus | None
@@ -289,7 +315,14 @@ class CompareResponse(BaseModel):
     snapshot_date: date
     assumptions: Assumptions
     total_eligible: int = Field(description="Offers eligible for this household.")
-    total_matching: int = Field(description="Eligible offers matching the filters.")
+    total_matching: int = Field(
+        description="Eligible offers matching the filters (ignores search)."
+    )
+    search_matching: int | None = Field(
+        default=None,
+        description="Filtered offers matching `search`; null without search.",
+    )
+    offset: int = 0
     results: list[ResultItem]
     excluded_count: int
     excluded_by_reason: dict[str, int]
