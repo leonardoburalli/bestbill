@@ -53,25 +53,24 @@ export function durationInfo(item: DurationLike): DurationInfo {
 const monthsLabel = (n: number) => `${n} ${n === 1 ? 'mese' : 'mesi'}`
 
 /** Full wording: "Prezzo bloccato 24 mesi" (fixed), "Condizioni garantite 24 mesi" (variable),
- *  "Durata indeterminata", "Durata non indicata". */
+ *  "Durata non specificata" (no fixed term declared, or not provided). */
 export function formatDuration(item: DurationLike): string {
   const d = durationInfo(item)
-  if (d.kind === 'open') return 'Durata indeterminata'
-  if (d.kind === 'unknown') return 'Durata non indicata'
+  if (d.kind === 'open') return 'Durata non specificata'
+  if (d.kind === 'unknown') return 'Durata non specificata'
   return `${item.price_type === 'fixed' ? 'Prezzo bloccato' : 'Condizioni garantite'} ${monthsLabel(d.months)}`
 }
 
-/** Short wording for tight spaces: "24 mesi", "Indeterminata", "—". */
+/** Short wording for tight spaces: "24 mesi", "Non specificata", "—". */
 export function formatDurationShort(item: DurationLike): string {
   const d = durationInfo(item)
-  if (d.kind === 'open') return 'Indeterminata'
+  if (d.kind === 'open') return 'Non specificata'
   if (d.kind === 'unknown') return '—'
   return monthsLabel(d.months)
 }
 
-/** CSV value: months as a number, "indeterminata", or empty when unknown. */
-export function durationCsvValue(item: DurationLike): number | string | null {
+/** CSV value: months as a number, otherwise "non specificata". */
+export function durationCsvValue(item: DurationLike): number | string {
   const d = durationInfo(item)
-  if (d.kind === 'open') return 'indeterminata'
-  return d.kind === 'months' ? d.months : null
+  return d.kind === 'months' ? d.months : 'non specificata'
 }

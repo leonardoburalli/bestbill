@@ -142,9 +142,7 @@ export function OfferDetails({ item, id }: { item: ResultItem; id: string }) {
               ? item.price_type === 'fixed'
                 ? 'Per questo periodo il prezzo dell\'energia non cambia.'
                 : 'Il prezzo segue il mercato; questa è la durata delle condizioni indicate dal fornitore.'
-              : durationInfo(item).kind === 'open'
-                ? 'L\'offerta non ha una scadenza fissata.'
-                : 'Il fornitore non ha indicato per quanto tempo valgono le condizioni.'}
+              : 'Il fornitore non indica per quanto tempo valgono le condizioni: possono cambiare con un preavviso.'}
           </p>
         </div>
 
