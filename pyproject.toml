@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "bestbill"
-version = "1.0.0"
+version = "1.0.1"
 description = "Which electricity offer is cheapest for your own consumption, in under a minute."
 readme = "README.md"
 license = "MIT"

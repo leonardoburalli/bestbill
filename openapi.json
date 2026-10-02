@@ -1341,7 +1341,7 @@
   "info": {
     "description": "Stateless API: consumption is processed in memory per request and never stored or logged. Every cost is the commodity/retailer cost only, before VAT ('costo materia energia (IVA esclusa)'), and a backtest ('perfect foresight'): the same kWh and the same monthly PUN as your last 12 months. It is not a forecast.",
     "title": "BestBill API",
-    "version": "1.0.0"
+    "version": "1.0.1"
   },
   "openapi": "3.1.0",
   "paths": {

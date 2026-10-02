@@ -11,6 +11,20 @@ with `schema_version` in `manifest.json` for its file format.
 
 ## [Unreleased]
 
+## [1.0.1] - 2026-10-02
+
+### Fixed
+- The API loads the catalogue again after the repository went public:
+  without a token it downloads the release files directly instead of
+  calling the GitHub API (whose 60 requests/hour unauthenticated limit is
+  exhausted on Render's shared IPs), and it skips the download when the
+  catalogue hasn't changed.
+- Catalogues published before a field was removed from the offer model
+  still load.
+
+### Security
+- Signed release-asset download URLs are no longer written to the logs.
+
 ## [1.0.0] - 2026-10-02
 
 First public release.
@@ -46,5 +60,6 @@ First public release.
   see `docs/deploy.md`.
 - CI for the Python package and the front end.
 
-[Unreleased]: https://github.com/leonardoburalli/bestbill/compare/v1.0.0...HEAD
+[Unreleased]: https://github.com/leonardoburalli/bestbill/compare/v1.0.1...HEAD
+[1.0.1]: https://github.com/leonardoburalli/bestbill/compare/v1.0.0...v1.0.1
 [1.0.0]: https://github.com/leonardoburalli/bestbill/releases/tag/v1.0.0
