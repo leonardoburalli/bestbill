@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import sqlite3
 from collections.abc import Sequence
 from datetime import date
@@ -10,6 +11,19 @@ from typing import Any, Literal
 
 from bestbill.core.models import Offer, PunSeries
 from bestbill.geo import resolve_comune
+
+#: Offer fields that older published catalogues still carry but the model no
+#: longer has. Dropped on read so a new API can serve an older catalogue until
+#: the next ``make catalog-publish``.
+RETIRED_OFFER_KEYS = frozenset({"dispatching_is_standard_estimate"})
+
+
+def offer_from_json(data: str) -> Offer:
+    raw = json.loads(data)
+    if isinstance(raw, dict):
+        for key in RETIRED_OFFER_KEYS.intersection(raw):
+            del raw[key]
+    return Offer.model_validate(raw)
 
 
 class CatalogStore:
@@ -60,7 +74,7 @@ class CatalogStore:
         where = f"WHERE {' AND '.join(clauses)}" if clauses else ""
         sql = f"SELECT data FROM offers {where} ORDER BY id LIMIT ? OFFSET ?"  # noqa: S608
         rows = self._conn.execute(sql, (*params, limit, offset)).fetchall()
-        return [Offer.model_validate_json(r["data"]) for r in rows]
+        return [offer_from_json(r["data"]) for r in rows]
 
     def offer_ids_in_geo(
         self, level: Literal["regione", "provincia", "comune"], code: str
@@ -86,7 +100,7 @@ class CatalogStore:
         rows = self._conn.execute(
             "SELECT data FROM offers WHERE customer = ? AND has_geo = 0", (customer,)
         ).fetchall()
-        offers = [Offer.model_validate_json(r["data"]) for r in rows]
+        offers = [offer_from_json(r["data"]) for r in rows]
         if istat_comune is not None:
             ref = resolve_comune(istat_comune)
             geo_rows = self._conn.execute(
@@ -102,9 +116,7 @@ class CatalogStore:
                     f"SELECT data FROM offers WHERE id IN ({placeholders})",  # noqa: S608
                     geo_ids,
                 ).fetchall()
-                offers.extend(
-                    Offer.model_validate_json(r["data"]) for r in geo_data_rows
-                )
+                offers.extend(offer_from_json(r["data"]) for r in geo_data_rows)
         del residency  # eligibility on residency is handled by compare()
         return offers
 

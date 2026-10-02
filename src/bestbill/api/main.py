@@ -25,6 +25,9 @@ from bestbill.api.routes import router
 from bestbill.api.settings import Settings
 
 log = logging.getLogger(__name__)
+# httpx logs full request URLs at INFO; signed release-asset URLs carry
+# short-lived credentials, so keep it quiet.
+logging.getLogger("httpx").setLevel(logging.WARNING)
 
 DESCRIPTION = (
     "Stateless API: consumption is processed in memory per request and never "

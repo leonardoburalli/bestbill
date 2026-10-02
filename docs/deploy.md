@@ -55,9 +55,14 @@ auto-deploy from `main`.
    Blueprint**, connect GitHub and select the repository.
 2. Render asks for the variables marked `sync: false`:
    - `BESTBILL_CORS_ORIGINS`: leave **empty** (requests arrive through Vercel).
-   - `GITHUB_TOKEN`: leave empty if the repository is public. For a private
-     repository, create a fine-grained token with **Contents: Read-only** on
-     this repository only.
+   - `GITHUB_TOKEN`: leave empty if the repository is public: the API then
+     downloads the catalogue from the public release URLs
+     (`https://github.com/<repo>/releases/download/...`), which do not use the
+     GitHub API quota (unauthenticated: 60 req/h per IP, exhausted on Render's
+     shared IPs). For a private repository, create a fine-grained token with
+     **Contents: Read-only** on this repository only. **Once the repository is
+     public, remove/unset `GITHUB_TOKEN`**: a revoked or expired token makes
+     GitHub answer 401 even for public data.
 3. **Apply.** Then open `https://<service>.onrender.com/api/health`;
    `catalog_loaded` becomes `true` once the catalogue is downloaded.
 
@@ -69,7 +74,7 @@ Variables set by the Blueprint:
 | `BESTBILL_RELEASE_TAG` | `catalog-latest` | Release tag to download |
 | `BESTBILL_TRUST_PROXY` | `1` | Rate-limit by the client IP Render forwards |
 | `BESTBILL_CORS_ORIGINS` | empty | Same-origin through Vercel |
-| `GITHUB_TOKEN` | empty / token | Only for a private repository |
+| `GITHUB_TOKEN` | empty / token | Only for a private repository; unset it once public |
 
 See the README's API section for the full list of settings.
 
