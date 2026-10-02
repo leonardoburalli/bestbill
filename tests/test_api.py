@@ -5,6 +5,7 @@ import logging
 import pytest
 from fastapi.testclient import TestClient
 
+import bestbill
 from bestbill.api.catalog_source import CatalogProvider, CatalogSettings
 from bestbill.api.main import create_app
 from bestbill.api.settings import Settings
@@ -39,6 +40,7 @@ def empty_client(tmp_path):
 def test_health_ok(client):
     body = client.get("/api/health").json()
     assert body["status"] == "ok"
+    assert body["version"] == bestbill.__version__
     assert body["catalog_loaded"] is True
     assert body["snapshot_date"]
     assert body["catalog_age_days"] >= 0
@@ -54,6 +56,7 @@ def test_health_without_catalog(empty_client):
     body = empty_client.get("/api/health").json()
     assert body == {
         "status": "ok",
+        "version": bestbill.__version__,
         "catalog_loaded": False,
         "snapshot_date": None,
         "catalog_age_days": None,

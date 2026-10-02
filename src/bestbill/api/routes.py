@@ -20,6 +20,7 @@ from fastapi import (
     Response,
 )
 
+import bestbill
 from bestbill.api.catalog_source import CatalogProvider, CatalogSnapshot
 from bestbill.api.schemas import (
     CatalogCounts,
@@ -78,6 +79,7 @@ def _field_error(field: str, message: str) -> HTTPException:
 def health(provider: Annotated[CatalogProvider, Depends(get_provider)]) -> Health:
     snap = provider.snapshot
     return Health(
+        version=bestbill.__version__,
         catalog_loaded=snap is not None,
         snapshot_date=snap.snapshot_date if snap else None,
         catalog_age_days=snap.age_days() if snap else None,

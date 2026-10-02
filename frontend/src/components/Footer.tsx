@@ -31,6 +31,7 @@ export default function Footer({ meta }: { meta: CatalogMeta | null }) {
               ))}
             </ul>
           )}
+          <p className="mt-2 text-xs text-ink-soft/80">Versione v{__APP_VERSION__}</p>
         </section>
 
         <section aria-labelledby="f-licenza">

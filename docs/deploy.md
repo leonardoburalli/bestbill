@@ -103,6 +103,35 @@ to your own Render URL.
 
 Every push to `main` redeploys the front end; pull requests get preview URLs.
 
+## Releasing a new version
+
+The application (API and front end) has one version, in `pyproject.toml`,
+following [Semantic Versioning](https://semver.org/): a patch for fixes
+(`1.0.1`), a minor for new features (`1.1.0`), a major for changes that
+break the API contract. It is shown in `/api/health`, `/api/docs` and the
+site footer. The catalogue is not versioned this way; it is identified by its
+snapshot date.
+
+While working, add each notable change to `## [Unreleased]` in
+`CHANGELOG.md`. To release:
+
+1. On a branch, bump `version` in `pyproject.toml` **and**
+   `frontend/package.json` (a test fails if they differ), run `uv lock` and
+   `make openapi`.
+2. In `CHANGELOG.md`, rename `## [Unreleased]` to `## [x.y.z] - YYYY-MM-DD`,
+   add a fresh empty `## [Unreleased]` above it, and update the links at the
+   bottom.
+3. Open a pull request, let CI pass, merge. Render and Vercel deploy `main`.
+4. Tag the merge commit and publish the release from the changelog entry:
+
+   ```bash
+   git checkout main && git pull
+   git tag -a vX.Y.Z -m "vX.Y.Z" && git push origin vX.Y.Z
+   gh release create vX.Y.Z --title "vX.Y.Z" --notes "<the changelog entry>"
+   ```
+
+5. Check `/api/health` on the live site reports the new `version`.
+
 ## Local development
 
 ```bash
