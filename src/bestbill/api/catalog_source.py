@@ -106,6 +106,11 @@ def load_snapshot(
     )
 
 
+def _parse_manifest(raw: bytes) -> dict[str, Any]:
+    loaded = json.loads(raw)
+    return loaded if isinstance(loaded, dict) else {}
+
+
 class CatalogProvider:
     """Holds the current snapshot and refreshes it from the GitHub release."""
 
@@ -121,6 +126,7 @@ class CatalogProvider:
         )
         self._snapshot: CatalogSnapshot | None = None
         self._updated_at: str | None = None
+        self._sha256: str | None = None
         self._lock = threading.Lock()
 
     @property
@@ -146,14 +152,17 @@ class CatalogProvider:
                 )
                 state = cache / "state.json"
                 if state.is_file():
-                    self._updated_at = json.loads(state.read_text()).get("updated_at")
+                    data = json.loads(state.read_text())
+                    self._updated_at = data.get("updated_at") or None
+                    self._sha256 = data.get("sqlite_sha256") or None
         except Exception as exc:
             log.warning("could not load the local catalogue: %s", exc)
 
     # -- remote refresh --------------------------------------------------
     def _headers(self, accept: str) -> dict[str, str]:
-        headers = {"Accept": accept, "X-GitHub-Api-Version": "2022-11-28"}
+        headers = {"Accept": accept}
         if self.settings.github_token:
+            headers["X-GitHub-Api-Version"] = "2022-11-28"
             headers["Authorization"] = f"Bearer {self.settings.github_token}"
         return headers
 
@@ -168,6 +177,21 @@ class CatalogProvider:
             return False
         try:
             return self._refresh()
+        except httpx.HTTPStatusError as exc:
+            # Never log headers/tokens: only status and rate-limit hints.
+            status = exc.response.status_code
+            hint = ""
+            if status in (403, 429):
+                for name in ("Retry-After", "X-RateLimit-Reset"):
+                    value = exc.response.headers.get(name)
+                    if value:
+                        hint += f" {name}={value[:40]}"
+            log.warning(
+                "catalogue refresh failed (HTTP %s%s); keeping the last good one",
+                status,
+                f";{hint}" if hint else "",
+            )
+            return False
         except Exception as exc:
             # Never log headers/tokens: only the exception type and message.
             log.warning(
@@ -180,63 +204,99 @@ class CatalogProvider:
             self._lock.release()
 
     def _refresh(self) -> bool:
-        s = self.settings
         with self._client_factory() as client:
-            resp = client.get(
-                f"https://api.github.com/repos/{s.repo}/releases/tags/{s.release_tag}",
-                headers=self._headers("application/vnd.github+json"),
+            if self.settings.github_token:
+                return self._refresh_api(client)
+            return self._refresh_public(client)
+
+    def _refresh_public(self, client: httpx.Client) -> bool:
+        """Public repo: only github.com release download URLs (no REST API,
+        so no 60 req/h unauthenticated quota); redirects are followed."""
+        s = self.settings
+        base = f"https://github.com/{s.repo}/releases/download/{s.release_tag}"
+        manifest_bytes = self._download_bytes(client, f"{base}/{MANIFEST_ASSET}")
+        manifest = _parse_manifest(manifest_bytes)
+        sha = manifest.get("sqlite_sha256")
+        if not sha:
+            log.warning("catalogue manifest has no sqlite_sha256; cannot verify")
+        elif self._snapshot is not None and sha == self._sha256:
+            log.debug("catalogue unchanged (sha256 %s)", sha)
+            return False
+        return self._download_and_swap(
+            client, f"{base}/{SQLITE_ASSET}", manifest, manifest_bytes, ""
+        )
+
+    def _refresh_api(self, client: httpx.Client) -> bool:
+        """Private repo: GitHub REST API with the token."""
+        s = self.settings
+        resp = client.get(
+            f"https://api.github.com/repos/{s.repo}/releases/tags/{s.release_tag}",
+            headers=self._headers("application/vnd.github+json"),
+        )
+        resp.raise_for_status()
+        assets = {a["name"]: a for a in resp.json().get("assets", [])}
+        if SQLITE_ASSET not in assets:
+            raise CatalogError(f"release has no {SQLITE_ASSET} asset")
+        sqlite_asset = assets[SQLITE_ASSET]
+        updated_at = str(sqlite_asset.get("updated_at", ""))
+        if self._snapshot is not None and updated_at == self._updated_at:
+            log.debug("catalogue unchanged (updated_at %s)", updated_at)
+            return False
+
+        manifest: dict[str, Any] = {}
+        manifest_bytes = b""
+        if MANIFEST_ASSET in assets:
+            manifest_bytes = self._download_bytes(client, assets[MANIFEST_ASSET]["url"])
+            manifest = _parse_manifest(manifest_bytes)
+        sha = manifest.get("sqlite_sha256")
+        if sha and self._snapshot is not None and sha == self._sha256:
+            log.debug("catalogue unchanged (sha256 %s)", sha)
+            self._updated_at = updated_at
+            return False
+        return self._download_and_swap(
+            client, sqlite_asset["url"], manifest, manifest_bytes, updated_at
+        )
+
+    def _download_and_swap(
+        self,
+        client: httpx.Client,
+        url: str,
+        manifest: dict[str, Any],
+        manifest_bytes: bytes,
+        updated_at: str,
+    ) -> bool:
+        cache = self.settings.cache_dir
+        cache.mkdir(parents=True, exist_ok=True)
+        fd, tmp_name = tempfile.mkstemp(dir=cache, suffix=".sqlite.part")
+        tmp = Path(tmp_name)
+        try:
+            with os.fdopen(fd, "wb") as fh:
+                digest = self._download_to(client, url, fh)
+            expected = manifest.get("sqlite_sha256")
+            if expected and digest != expected:
+                raise CatalogError("sha256 mismatch on the downloaded catalogue")
+            # Validate before swapping: it must open and hold the data.
+            loaded = load_snapshot(tmp)
+            if manifest_bytes:
+                (cache / MANIFEST_ASSET).write_bytes(manifest_bytes)
+            new_snapshot = CatalogSnapshot(
+                offers=loaded.offers,
+                pun=loaded.pun,
+                snapshot_date=loaded.snapshot_date,
+                attribution=loaded.attribution,
+                stats=loaded.stats,
+                manifest=manifest,
             )
-            resp.raise_for_status()
-            assets = {a["name"]: a for a in resp.json().get("assets", [])}
-            if SQLITE_ASSET not in assets:
-                raise CatalogError(f"release has no {SQLITE_ASSET} asset")
-            sqlite_asset = assets[SQLITE_ASSET]
-            updated_at = str(sqlite_asset.get("updated_at", ""))
-            if self._snapshot is not None and updated_at == self._updated_at:
-                log.debug("catalogue unchanged (updated_at %s)", updated_at)
-                return False
-
-            manifest: dict[str, Any] = {}
-            manifest_bytes = b""
-            if MANIFEST_ASSET in assets:
-                manifest_bytes = self._download_bytes(
-                    client, assets[MANIFEST_ASSET]["url"]
-                )
-                loaded = json.loads(manifest_bytes)
-                if isinstance(loaded, dict):
-                    manifest = loaded
-
-            cache = s.cache_dir
-            cache.mkdir(parents=True, exist_ok=True)
-            fd, tmp_name = tempfile.mkstemp(dir=cache, suffix=".sqlite.part")
-            tmp = Path(tmp_name)
-            try:
-                with os.fdopen(fd, "wb") as fh:
-                    digest = self._download_to(client, sqlite_asset["url"], fh)
-                expected = manifest.get("sqlite_sha256")
-                if expected and digest != expected:
-                    raise CatalogError("sha256 mismatch on the downloaded catalogue")
-                # Validate before swapping: it must open and hold the data.
-                new_snapshot = load_snapshot(tmp)
-                if manifest_bytes:
-                    (cache / MANIFEST_ASSET).write_bytes(manifest_bytes)
-                new_snapshot = CatalogSnapshot(
-                    offers=new_snapshot.offers,
-                    pun=new_snapshot.pun,
-                    snapshot_date=new_snapshot.snapshot_date,
-                    attribution=new_snapshot.attribution,
-                    stats=new_snapshot.stats,
-                    manifest=manifest,
-                )
-                os.replace(tmp, cache / SQLITE_ASSET)
-                (cache / "state.json").write_text(
-                    json.dumps({"updated_at": updated_at}), encoding="utf-8"
-                )
-            finally:
-                tmp.unlink(missing_ok=True)
-
+            os.replace(tmp, cache / SQLITE_ASSET)
+            (cache / "state.json").write_text(
+                json.dumps({"sqlite_sha256": digest, "updated_at": updated_at}),
+                encoding="utf-8",
+            )
+        finally:
+            tmp.unlink(missing_ok=True)
         self._snapshot = new_snapshot
-        self._updated_at = updated_at
+        self._sha256 = digest
+        self._updated_at = updated_at or None
         log.info("catalogue refreshed (snapshot %s)", new_snapshot.snapshot_date)
         return True
 

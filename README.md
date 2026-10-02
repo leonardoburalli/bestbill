@@ -206,7 +206,7 @@ Configuration (environment variables):
 | `BESTBILL_CATALOG_PATH` | – | Local `catalog.sqlite` (dev/tests); takes precedence over the release |
 | `BESTBILL_REPO` | `leonardoburalli/bestbill` | GitHub repo holding the catalogue release |
 | `BESTBILL_RELEASE_TAG` | `catalog-latest` | Release tag with `catalog.sqlite`, `manifest.json`, `retailers.csv` |
-| `GITHUB_TOKEN` | – | Read-only token; only needed while the repo is private |
+| `GITHUB_TOKEN` | – | Read-only token; only for a private repo. Leave it **unset** once public (a revoked token makes GitHub answer 401) |
 | `BESTBILL_CACHE_DIR` | system temp dir | Where the downloaded catalogue is cached |
 | `BESTBILL_REFRESH_HOURS` | `6` | How often to check the release for a newer catalogue |
 | `BESTBILL_TRUST_PROXY` | off | `1`: rate-limit by the first `X-Forwarded-For` entry (behind Render) |
@@ -215,9 +215,16 @@ Configuration (environment variables):
 Without `BESTBILL_CATALOG_PATH` the app downloads the release assets at
 startup (it starts serving `/api/health` right away, with `catalog_loaded:
 false`, until the download finishes), verifies the `sha256` from
-`manifest.json`, swaps the file in atomically, and re-checks the asset's
-`updated_at` every `BESTBILL_REFRESH_HOURS`. If a refresh fails, the last good
-catalogue keeps serving and a warning is logged.
+`manifest.json`, swaps the file in atomically, and re-checks every
+`BESTBILL_REFRESH_HOURS`. Without `GITHUB_TOKEN` (public repo) it only uses the
+public release download URLs
+(`https://github.com/<repo>/releases/download/<tag>/<asset>`), which are not
+subject to the unauthenticated GitHub API quota (60 req/h per IP, easily
+exhausted on shared hosts): it fetches the small `manifest.json` and downloads
+`catalog.sqlite` only when its `sqlite_sha256` differs from the loaded one.
+With a token (private repo) it uses the GitHub API instead. If a refresh
+fails, the last good catalogue keeps serving and a warning is logged (HTTP
+403/429 include the `Retry-After` / `X-RateLimit-Reset` hint when present).
 
 ## Deploy
 
