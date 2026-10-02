@@ -16,4 +16,7 @@ def _script():
 
 def test_openapi_json_is_up_to_date():
     committed = (ROOT / "openapi.json").read_text(encoding="utf-8")
-    assert committed == _script().render(), "run `make openapi` and commit"
+    assert committed == _script().render(), (
+        "openapi.json is stale (also after every version bump): "
+        "run `make openapi` and commit"
+    )
