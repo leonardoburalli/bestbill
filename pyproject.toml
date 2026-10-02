@@ -15,14 +15,10 @@ dependencies = [
   "httpx>=0.28,<1",
   "openpyxl>=3.1,<4",
   "pydantic>=2.10,<3",
-  "python-multipart>=0.0.32,<1",
   "uvicorn[standard]>=0.54,<1",
 ]
 
 [project.optional-dependencies]
-chart = [
-  "matplotlib>=3.9,<4",
-]
 dev = [
   "mypy>=1.14,<2",
   "pytest>=8.3,<9",
@@ -62,5 +58,5 @@ strict = true
 packages = ["bestbill"]
 
 [[tool.mypy.overrides]]
-module = ["openpyxl.*", "matplotlib.*"]
+module = ["openpyxl.*"]
 ignore_missing_imports = true

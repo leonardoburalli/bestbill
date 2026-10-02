@@ -81,7 +81,6 @@ class PriceType(StrEnum):
 class OfferSource(StrEnum):
     PLACET = "placet"
     MLIBERO = "mlibero"
-    CUSTOM = "custom"
 
 
 class CustomerType(StrEnum):
@@ -188,8 +187,7 @@ class LossesMode(StrEnum):
     ``bestbill.arera.policy``) to an offer's energy terms. Verified against
     AU "Regole per il calcolo della spesa annua stimata" v4.0:
 
-    - ``NONE``: no losses (fixed offers of both ARERA sources; every
-      custom/legacy offer).
+    - ``NONE``: no losses (fixed offers of both ARERA sources).
     - ``INDEX_ONLY``: losses apply to the index only, not the spread
       (mercato libero variable offers).
     - ``INDEX_AND_SPREAD``: losses apply to (index + spread) together
@@ -295,7 +293,7 @@ def _next_month(d: date) -> date:
 
 
 class Offer(BaseModel):
-    """A normalised electricity offer, from ARERA data or a custom source.
+    """A normalised electricity offer, from ARERA data.
 
     Scope: every priced field on this model is **retailer-dependent**
     (energy price/spread, supplier fees, supplier-set €/kWh extras, power
@@ -370,8 +368,6 @@ class Offer(BaseModel):
     geo: GeoRestriction | None = None
     #: How the engine applies network losses (1 + LOSSES) to this offer's
     #: energy terms; see ``bestbill.arera.policy`` and ``LossesMode``.
-    #: Custom (legacy Excel) offers default to NONE to keep their
-    #: historical, loss-free pricing.
     losses_mode: LossesMode = LossesMode.NONE
 
     consumption_min_kwh: float | None = Field(default=None, ge=0)
@@ -391,13 +387,9 @@ class Offer(BaseModel):
     #: both ``p_iva`` and ``denominazione`` directly.
     supplier_vat: str | None = None
     #: Where ``supplier`` came from -- see ``SupplierNameSource`` and
-    #: ``bestbill.arera.operators``. ``None`` for custom (legacy Excel)
-    #: offers and the rare mercato libero offer with no VAT at all.
+    #: ``bestbill.arera.operators``. ``None`` for the rare mercato
+    #: libero offer with no VAT at all.
     supplier_name_source: SupplierNameSource | None = None
-    #: True for a custom (legacy Excel) offer priced with the standard
-    #: household dispatching (``--include-custom``, see
-    #: ``bestbill.cli``), for display/transparency only.
-    dispatching_is_standard_estimate: bool = False
 
     def guarantees_min_duration(self, min_months: int) -> bool:
         """True if conditions are guaranteed for a fixed period of at least
@@ -671,10 +663,6 @@ class OfferResult(BaseModel):
     #: Conditional discounts kept for display only (not priced).
     conditional_discounts: list[Discount] = Field(default_factory=list)
     breakdown: CostBreakdown
-    #: True if this offer's dispatching cost is the catalogue's standard
-    #: household estimate rather than its own (custom/legacy offers priced
-    #: with ``--include-custom``, see ``bestbill.cli``), for display only.
-    dispatching_is_standard_estimate: bool = False
     #: See ``Offer.duration_months`` / ``Offer.duration_open_ended``.
     duration_months: int | None = None
     duration_open_ended: bool = False

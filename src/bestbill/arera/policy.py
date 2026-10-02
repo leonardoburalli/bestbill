@@ -134,8 +134,7 @@ def losses_mode(source: OfferSource, price_type: PriceType) -> LossesMode:
     against AU "Regole per il calcolo della spesa annua stimata" v4.0:
     fixed offers (either source) get no losses; mercato libero variable
     offers apply losses to the index only; PLACET variable offers apply
-    losses to (index + spread) together. Custom (legacy Excel) offers
-    never call this function and keep their historical, loss-free pricing.
+    losses to (index + spread) together.
     """
     if price_type is PriceType.FIXED:
         return LossesMode.NONE

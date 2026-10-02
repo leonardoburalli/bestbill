@@ -251,12 +251,12 @@ def test_estimate_annual_cost_none_when_variable_and_no_pun():
     assert estimate_annual_cost(offer, profile, empty_pun) is None
 
 
-def test_custom_offer_defaults_keep_legacy_behaviour():
+def test_offer_defaults():
     offer = Offer(
         id="legacy",
         supplier="Legacy",
         name="Legacy",
-        source="custom",
+        source="placet",
         price_type="fixed",
         band_structure="mono",
         energy_price_eur_kwh={"mono": 0.10},

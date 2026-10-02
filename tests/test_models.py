@@ -22,7 +22,7 @@ def test_fixed_offer_requires_matching_energy_price_keys():
             id="x",
             supplier="A",
             name="A",
-            source="custom",
+            source="placet",
             price_type="fixed",
             band_structure="f1f2f3",
             energy_price_eur_kwh={"F1": 0.1},  # missing F2, F3
@@ -37,7 +37,7 @@ def test_variable_offer_must_not_set_energy_price():
             id="x",
             supplier="A",
             name="A",
-            source="custom",
+            source="placet",
             price_type="variable",
             band_structure="mono",
             energy_price_eur_kwh={"mono": 0.1},

@@ -43,15 +43,11 @@ no full-bill calculation anywhere in this codebase. Offers referencing
 - A read-only offers catalogue (`bestbill.catalog`): `catalog build` writes
   a validated `catalog.sqlite` + `manifest.json` snapshot; `catalog fetch`
   downloads the day's source files.
-- A legacy Excel reader (`bestbill.io.excel`) for the original
-  `Tariffario` / `Storico_<Location>` workbook format.
 - A stateless HTTP API (`bestbill.api`, FastAPI): compare, offers browse,
-  comune autocomplete, Excel parse, sample household, catalogue meta.
+  comune autocomplete, sample household, catalogue meta.
 - Area-restricted offers are matched by comune, provincia and regione using
   the ISTAT comuni table (`bestbill.geo`).
-- A CLI (`bestbill`) with `compare` (ranks custom and/or catalogue offers,
-  prints, writes a CSV, optionally a chart) and `catalog build|fetch`
-  subcommands.
+- A CLI (`bestbill`) with `catalog build|fetch` subcommands.
 
 ## Quick start
 
@@ -59,41 +55,20 @@ no full-bill calculation anywhere in this codebase. Offers referencing
 # Install the locked environment (uv: https://docs.astral.sh/uv/)
 make install
 
-# Try it on the bundled synthetic sample household
-uv run bestbill compare --file src/bestbill/data/sample.xlsx --location Esempio
-
-# Or on your own workbook (kept out of git; see Input/ below)
-uv run bestbill compare --file Input/TariffeEE_Bolletta.xlsx --location Milano --chart
-
-# Build a catalogue from ARERA source files, then rank real offers too
+# Build a catalogue from ARERA source files (or `bestbill catalog fetch` them)
 uv run bestbill catalog build --placet PO_Offerte_E_PLACET.csv \
   --mlibero PO_Offerte_E_MLIBERO.xml --indices indices.csv \
   --params-ml PO_Parametri_Mercato_Libero_E.csv \
   --params-e PO_Parametri_E.csv --operators operators.zip --out build/catalog
-uv run bestbill compare --file src/bestbill/data/sample.xlsx --location Esempio \
-  --catalog build/catalog/catalog.sqlite
 
-# Add the workbook's own offers too, priced with the standard household
-# dispatching so they're comparable to catalogue offers
-uv run bestbill compare --file src/bestbill/data/sample.xlsx --location Esempio \
-  --catalog build/catalog/catalog.sqlite --include-custom
+# Serve the API on it (see "The API" below)
+BESTBILL_CATALOG_PATH=build/catalog/catalog.sqlite \
+  uv run uvicorn bestbill.api.main:app --port 8000
 ```
 
-For backwards compatibility, `bestbill --file ... --location ...` (no
-subcommand) is equivalent to `bestbill compare --file ... --location ...`.
-
-`--pun {actual,forecast}` chooses which PUN series to use for variable
-offers; `--output-dir` controls where the CSV (and chart) are written
-(defaults to `Output/`). `compare` also accepts `--residency
-{resident,non_resident}`, `--istat-comune` (6-digit ISTAT comune code, for
-geo-restricted catalogue offers) and `--committed-power-kw` (default 3.0).
-With `--catalog`, only catalogue offers are ranked by default (the
-workbook's custom tariffs previously had no dispatching cost, making them
-unfairly cheaper); pass `--include-custom` to add them back in, priced
-with the catalogue's standard household dispatching. `catalog build`
-accepts an optional `--operators <zip|xlsx>` (the ARERA "Ricerca
-operatori" export) to name mercato libero offers by retailer instead of
-their VAT.
+`catalog build` accepts an optional `--operators <zip|xlsx|csv>` (the ARERA
+"Ricerca operatori" export) to name mercato libero offers by retailer
+instead of their VAT.
 
 ## Development
 
@@ -102,7 +77,7 @@ make install   # uv sync --locked --extra dev
 make test      # pytest (marked "slow" tests need the full ARERA files, skipped by default)
 make lint      # ruff, ruff format --check, mypy, shellcheck
 make check     # test + lint
-make smoke     # end-to-end CLI + API run on the synthetic sample + fixture catalogue
+make smoke     # end-to-end catalogue build + API run on the synthetic sample + fixture catalogue
 make openapi   # regenerate openapi.json
 make catalog   # fetch + build + validate today's ARERA catalogue (network)
 make catalog-publish  # build and publish the catalogue (see below)
@@ -206,7 +181,6 @@ BESTBILL_CATALOG_PATH=build/catalog/catalog.sqlite \
 | GET | `/api/offers` | browse offers (`price_type`, `source`, `supplier`, `q`, `limit`, `offset`) |
 | GET | `/api/comuni?q=` | up to 20 comuni by name prefix (accent/case-insensitive), for autocomplete |
 | GET | `/api/sample` | the synthetic sample household's 12 months |
-| POST | `/api/parse` | multipart `.xlsx` in the legacy format → consumption profiles (max 2 MB) |
 | POST | `/api/compare` | 12 months of kWh (+ optional F1/F2/F3), `residency`, `istat_comune`, `committed_power_kw`, `scenario`, `filters`, `top_n` → ranked offers + assumptions |
 
 `/api/compare`, `/api/offers` and `/api/catalog/meta` return 503 until a
@@ -219,7 +193,7 @@ scenario, cost label) and the catalogue snapshot date. `rank` and
 committed as `openapi.json` (`make openapi` refreshes it; a test fails when
 it is stale) and the frontend generates its types from it.
 
-Hardening: body limits (compare 64 KB, upload 2 MB) enforced before reading
+Hardening: body limits (64 KB) enforced before reading
 the body, an in-memory per-IP rate limit (60 req/min, compare 20/min;
 `/api/health` exempt), security headers (CSP, `X-Frame-Options: DENY`,
 `nosniff`, `Referrer-Policy`), CORS off unless configured, and a generic 500
@@ -245,39 +219,17 @@ false`, until the download finishes), verifies the `sha256` from
 `updated_at` every `BESTBILL_REFRESH_HOURS`. If a refresh fails, the last good
 catalogue keeps serving and a warning is logged.
 
-## Deploy the API to Render
+## Deploy
 
-The repo ships a `Dockerfile` and a `render.yaml` Blueprint (one free web
-service, `bestbill-api`, Frankfurt, health check `/api/health`, auto-deploy
-from `main`).
-
-1. **Create the token** (only while the repository is private; skip if it's
-   public): GitHub → Settings → Developer settings → Personal access tokens →
-   *Fine-grained tokens* → Generate new token. Resource owner: you; *Only
-   select repositories* → `leonardoburalli/bestbill`; Repository permissions →
-   **Contents: Read-only**; pick a sensible expiry. Copy the token.
-2. On [dashboard.render.com](https://dashboard.render.com): **New → Blueprint**,
-   connect GitHub and select this repository. Render reads `render.yaml`.
-3. When prompted for the `sync: false` variables, set **`GITHUB_TOKEN`** to the
-   token from step 1, and leave `BESTBILL_CORS_ORIGINS` empty (the frontend
-   is same-origin through the Vercel rewrite).
-4. Click **Apply**. Once deployed, check `https://<service>.onrender.com/api/health`
-   (`catalog_loaded` turns `true` after the first download) and
-   `/api/docs`.
-
-Free-plan caveats: the service spins down after ~15 minutes without traffic,
-and the next request takes about 30–60 s (cold start, plus the catalogue
-download because the free plan has no persistent disk). The frontend should
-ping `/api/health` and show a "waking up" state. Publishing a new catalogue
-with `make catalog-publish` needs no redeploy: running instances pick it up
-within `BESTBILL_REFRESH_HOURS`, and a restart fetches it immediately.
+The live setup is Vercel (front end) → Render (API, Docker) → a GitHub
+Release holding the catalogue, all on free plans. Step-by-step instructions,
+including what to change when you fork, are in
+[`docs/deploy.md`](docs/deploy.md).
 
 ## Data & privacy
 
-- `Input/` and `Output/` are local, gitignored folders for your own workbook
-  and generated reports — nothing in them is ever committed.
-- `src/bestbill/data/sample.xlsx` is a **synthetic** sample household
-  (reproducible via `scripts/make_sample.py`); it contains no real data.
+- `src/bestbill/data/sample.json` is a **synthetic** sample household
+  served by `/api/sample`; it contains no real data.
 - The engine has no network or storage side effects: consumption data lives
   only in memory for the duration of a run.
 - The ARERA catalogue is public reference data (offers, PUN), refreshed as a
@@ -294,10 +246,8 @@ src/bestbill/
 ├── catalog/       # build/validate catalog.sqlite + manifest.json, read-only store
 ├── api/           # FastAPI app: routes, schemas, catalogue loader, middleware
 ├── geo.py         # ISTAT comuni -> provincia -> regione lookup and search
-├── io/excel.py     # legacy Tariffario/Storico Excel reader
-├── data/sample.xlsx  # synthetic sample household
-└── cli.py         # command-line interface (compare, catalog build/fetch)
-scripts/make_sample.py  # regenerates data/sample.xlsx
+├── data/          # comuni.csv, sample.json (synthetic sample household)
+└── cli.py         # command-line interface (catalog build/fetch)
 scripts/make_comuni.py  # regenerates data/comuni.csv from ISTAT
 scripts/export_openapi.py  # writes openapi.json (make openapi)
 tests/             # pytest suite + tests/fixtures/arera (trimmed real samples, CC-BY 4.0)

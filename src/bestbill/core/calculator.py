@@ -177,7 +177,7 @@ def _loss_multipliers(offer: Offer) -> tuple[float, float]:
     della spesa annua stimata" v4.0):
 
     - NONE: no losses anywhere (1.0, 1.0) -- fixed offers of both ARERA
-      sources, and every custom/legacy offer.
+      sources.
     - INDEX_ONLY: losses on the index only, not the spread -- mercato
       libero variable offers.
     - INDEX_AND_SPREAD: losses on (index + spread) together -- PLACET
@@ -609,7 +609,6 @@ def compare(
                 one_off_fee_eur=offer.one_off_fee_eur,
                 conditional_discounts=_conditional_discounts(offer),
                 breakdown=breakdowns[offer.id],
-                dispatching_is_standard_estimate=offer.dispatching_is_standard_estimate,
                 duration_months=offer.duration_months,
                 duration_open_ended=offer.duration_open_ended,
             )

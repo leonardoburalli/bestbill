@@ -2,8 +2,6 @@
 build
 dist
 tests
-Input
-Output
 frontend
 .git
 .github

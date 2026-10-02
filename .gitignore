@@ -17,10 +17,7 @@ data/downloads/
 *.code-workspace
 
 # BestBill-specific
-Input/
-Output/
 *.xlsx
-!src/bestbill/data/*.xlsx
 !tests/fixtures/**
 frontend/node_modules/
 frontend/dist/
@@ -34,3 +31,8 @@ PLAN.v*.md
 
 # Local copy of the published catalogue (gh release download catalog-latest -D catalog-latest)
 /catalog-latest/
+
+# Personal local files (legacy workbooks, reports, consumption exports): never commit
+Input/
+Output/
+*Consumi*.csv

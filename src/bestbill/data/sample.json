@@ -1,0 +1,54 @@
+{
+  "location": "Esempio",
+  "description": "Famiglia di esempio con dati sintetici (non reali).",
+  "months": [
+    {
+      "month": "2024-09",
+      "kwh": 180.0
+    },
+    {
+      "month": "2024-10",
+      "kwh": 200.0
+    },
+    {
+      "month": "2024-11",
+      "kwh": 260.0
+    },
+    {
+      "month": "2024-12",
+      "kwh": 320.0
+    },
+    {
+      "month": "2025-01",
+      "kwh": 340.0
+    },
+    {
+      "month": "2025-02",
+      "kwh": 300.0
+    },
+    {
+      "month": "2025-03",
+      "kwh": 240.0
+    },
+    {
+      "month": "2025-04",
+      "kwh": 190.0
+    },
+    {
+      "month": "2025-05",
+      "kwh": 170.0
+    },
+    {
+      "month": "2025-06",
+      "kwh": 180.0
+    },
+    {
+      "month": "2025-07",
+      "kwh": 170.0
+    },
+    {
+      "month": "2025-08",
+      "kwh": 150.0
+    }
+  ]
+}

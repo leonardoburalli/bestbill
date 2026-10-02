@@ -1,15 +1,10 @@
 #!/usr/bin/env bash
-# End-to-end smoke test: run the CLI on the synthetic sample file, then
-# build a small catalogue from the trimmed ARERA fixtures and rank real
-# offers for the same sample household.
+# End-to-end smoke test: build a small catalogue from the trimmed ARERA
+# fixtures, boot the API on it and rank real offers for the sample household.
 # shellcheck source-path=SCRIPTDIR
 source "$(dirname "$0")/lib.sh"
 
 OUT_DIR="${1:-build/smoke}"
-
-step "Smoke: compare custom offers for the sample household" \
-  uv run bestbill compare --file src/bestbill/data/sample.xlsx --location Esempio \
-    --output-dir "${OUT_DIR}"
 
 step "Smoke: build a catalogue from the ARERA fixtures" \
   uv run bestbill catalog build \
@@ -21,16 +16,7 @@ step "Smoke: build a catalogue from the ARERA fixtures" \
     --operators tests/fixtures/arera/operators.xlsx \
     --out "${OUT_DIR}/catalog"
 
-step "Smoke: rank catalogue-only offers for the sample household" \
-  uv run bestbill compare --file src/bestbill/data/sample.xlsx --location Esempio \
-    --catalog "${OUT_DIR}/catalog/catalog.sqlite" --output-dir "${OUT_DIR}"
-
-step "Smoke: rank catalogue + custom offers (standard dispatching) together" \
-  uv run bestbill compare --file src/bestbill/data/sample.xlsx --location Esempio \
-    --catalog "${OUT_DIR}/catalog/catalog.sqlite" --include-custom \
-    --output-dir "${OUT_DIR}"
-
-# --- API: boot uvicorn on the fixture catalogue and run a compare ---------
+# --- API: boot uvicorn on the fixture catalogue ---------
 API_PORT="${SMOKE_API_PORT:-8765}"
 API_LOG="${OUT_DIR}/uvicorn.log"
 API_PID=""
@@ -59,6 +45,19 @@ start_api() {
   return 1
 }
 
+api_basic() {
+  local base="http://127.0.0.1:${API_PORT}/api"
+  curl -fsS "${base}/health" -o "${OUT_DIR}/api_health.json" -w 'health HTTP %{http_code}\n'
+  curl -fsS "${base}/sample" -o "${OUT_DIR}/api_sample.json" -w 'sample HTTP %{http_code}\n'
+  python3 - "${OUT_DIR}/api_sample.json" <<'PY'
+import json, sys
+sample = json.load(open(sys.argv[1]))
+assert len(sample["months"]) == 12, "sample must have 12 months"
+assert all(m["kwh"] > 0 for m in sample["months"])
+print("API sample ok")
+PY
+}
+
 api_compare() {
   local base="http://127.0.0.1:${API_PORT}/api" sample body
   sample=$(curl -fsS "${base}/sample")
@@ -82,4 +81,5 @@ PY
 }
 
 step "Smoke: start the API on the fixture catalogue" start_api
+step "Smoke: GET /api/health and /api/sample" api_basic
 step "Smoke: POST /api/compare with the sample household" api_compare
