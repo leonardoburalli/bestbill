@@ -23,7 +23,6 @@ class Settings:
     rate_limit_per_minute: int = 60
     compare_rate_limit_per_minute: int = 20
     max_compare_body_bytes: int = 64 * 1024
-    max_upload_bytes: int = 2 * 1024 * 1024
 
     @classmethod
     def from_env(cls, env: Mapping[str, str] | None = None) -> Settings:

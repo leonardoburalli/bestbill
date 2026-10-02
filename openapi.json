@@ -119,21 +119,6 @@
         "title": "BandStructure",
         "type": "string"
       },
-      "Body_parse_api_parse_post": {
-        "properties": {
-          "file": {
-            "contentMediaType": "application/octet-stream",
-            "description": ".xlsx, max 2 MB",
-            "title": "File",
-            "type": "string"
-          }
-        },
-        "required": [
-          "file"
-        ],
-        "title": "Body_parse_api_parse_post",
-        "type": "object"
-      },
       "BreakEvenStatus": {
         "description": "Classifies a variable offer's break-even PUN against the cheapest\neligible fixed offer (see ``bestbill.core.calculator._break_even_pun``):\n\n- ``CHEAPER_BELOW``: the normal case -- the variable offer is cheaper\n  than the best fixed offer for PUN values below the break-even point\n  (and more expensive above it).\n- ``NEVER_CHEAPER``: the break-even PUN is <= 0 -- the variable offer\n  is never cheaper than the best fixed offer at any non-negative PUN.\n- ``ALWAYS_CHEAPER``: the variable offer's cost slope (kWh × loss\n  multiplier) is <= 0, so it can't be compared as a break-even point;\n  in practice this only happens when there's no fixed offer to break\n  even against or the variable offer has zero/negative consumption\n  exposure -- kept for completeness, see the calculator docstring.",
         "enum": [
@@ -986,57 +971,10 @@
       "OfferSource": {
         "enum": [
           "placet",
-          "mlibero",
-          "custom"
+          "mlibero"
         ],
         "title": "OfferSource",
         "type": "string"
-      },
-      "ParseResult": {
-        "properties": {
-          "profiles": {
-            "items": {
-              "$ref": "#/components/schemas/ParsedProfile"
-            },
-            "title": "Profiles",
-            "type": "array"
-          },
-          "skipped": {
-            "description": "Locations found in the file but not usable (need 12 consecutive months of non-negative kWh).",
-            "items": {
-              "type": "string"
-            },
-            "title": "Skipped",
-            "type": "array"
-          }
-        },
-        "required": [
-          "profiles",
-          "skipped"
-        ],
-        "title": "ParseResult",
-        "type": "object"
-      },
-      "ParsedProfile": {
-        "properties": {
-          "location": {
-            "title": "Location",
-            "type": "string"
-          },
-          "months": {
-            "items": {
-              "$ref": "#/components/schemas/SampleMonth"
-            },
-            "title": "Months",
-            "type": "array"
-          }
-        },
-        "required": [
-          "location",
-          "months"
-        ],
-        "title": "ParsedProfile",
-        "type": "object"
       },
       "PriceType": {
         "enum": [
@@ -1090,10 +1028,6 @@
           "delta_vs_best_eur": {
             "title": "Delta Vs Best Eur",
             "type": "number"
-          },
-          "dispatching_is_standard_estimate": {
-            "title": "Dispatching Is Standard Estimate",
-            "type": "boolean"
           },
           "duration_months": {
             "anyOf": [
@@ -1254,8 +1188,7 @@
           "break_even_pun_eur_kwh",
           "break_even_status",
           "one_off_fee_eur",
-          "conditional_discounts",
-          "dispatching_is_standard_estimate"
+          "conditional_discounts"
         ],
         "title": "ResultItem",
         "type": "object"
@@ -1684,55 +1617,6 @@
           }
         },
         "summary": "List Offers"
-      }
-    },
-    "/api/parse": {
-      "post": {
-        "description": "Read a workbook in the legacy format. Nothing is stored.",
-        "operationId": "parse_api_parse_post",
-        "requestBody": {
-          "content": {
-            "multipart/form-data": {
-              "schema": {
-                "$ref": "#/components/schemas/Body_parse_api_parse_post"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ParseResult"
-                }
-              }
-            },
-            "description": "Successful Response"
-          },
-          "413": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            },
-            "description": "Upload over 2 MB."
-          },
-          "422": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ValidationErrorResponse"
-                }
-              }
-            },
-            "description": "Unprocessable Content"
-          }
-        },
-        "summary": "Parse"
       }
     },
     "/api/sample": {

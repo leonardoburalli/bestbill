@@ -8,7 +8,6 @@ import { Badge } from './ui'
 export const SOURCE_LABEL: Record<OfferSource, string> = {
   placet: 'PLACET',
   mlibero: 'Mercato libero',
-  custom: 'Personalizzata',
 }
 export const PRICE_LABEL: Record<PriceType, string> = {
   fixed: 'Prezzo fisso',
@@ -66,7 +65,6 @@ export function OfferFlags({ item }: { item: ResultItem }) {
         ? '1 sconto con condizioni, non incluso'
         : `${item.conditional_discounts.length} sconti con condizioni, non inclusi`,
     )
-  if (item.dispatching_is_standard_estimate) flags.push('Dispacciamento stimato con valore standard')
   if (flags.length === 0) return null
   return (
     <ul className="mt-2 space-y-1 text-[0.8rem] leading-snug text-amber-ink">
@@ -129,9 +127,6 @@ export function OfferDetails({ item, id }: { item: ResultItem; id: string }) {
             <div key={r.key} className="flex justify-between gap-4 px-3.5 py-2">
               <dt>
                 {r.label}
-                {r.key === 'dispatching' && item.dispatching_is_standard_estimate && (
-                  <span className="ml-1.5 text-xs text-amber-ink">(stima standard)</span>
-                )}
               </dt>
               <dd className="tabular whitespace-nowrap">
                 {r.sign ? '−' : ''}
@@ -205,13 +200,6 @@ export function OfferDetails({ item, id }: { item: ResultItem; id: string }) {
               scende.
             </p>
           </div>
-        )}
-
-        {item.dispatching_is_standard_estimate && (
-          <p className="rounded-lg border border-amber-line bg-amber-soft px-3 py-2 text-sm leading-relaxed">
-            Per questa offerta abbiamo stimato il dispacciamento con i valori standard per le famiglie, perché
-            non è indicato nell'offerta.
-          </p>
         )}
 
         <p className="text-[0.8rem] leading-relaxed text-ink-soft">

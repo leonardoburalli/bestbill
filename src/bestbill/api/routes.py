@@ -4,26 +4,21 @@ logged: no route logs request bodies or values derived from them.
 
 from __future__ import annotations
 
-import io
 import unicodedata
-import zipfile
 from collections import Counter
 from datetime import date
+from functools import lru_cache
 from importlib import resources
 from typing import Annotated, Any
 
-import openpyxl
 from fastapi import (
     APIRouter,
     Depends,
-    File,
     HTTPException,
     Query,
     Request,
     Response,
-    UploadFile,
 )
-from pydantic import ValidationError
 
 from bestbill.api.catalog_source import CatalogProvider, CatalogSnapshot
 from bestbill.api.schemas import (
@@ -37,11 +32,8 @@ from bestbill.api.schemas import (
     Health,
     OfferListItem,
     OfferPage,
-    ParsedProfile,
-    ParseResult,
     ResultItem,
     SampleHousehold,
-    SampleMonth,
     ValidationErrorResponse,
 )
 from bestbill.api.settings import STALE_AFTER_DAYS
@@ -52,13 +44,9 @@ from bestbill.core.models import (
     PriceType,
 )
 from bestbill.geo import get_comune, search_comuni
-from bestbill.io.excel import ExcelFormatError, list_locations, read_location_data
 
 router = APIRouter(prefix="/api")
 
-SAMPLE_LOCATION = "Esempio"
-MAX_ZIP_ENTRIES = 1000
-MAX_UNCOMPRESSED_BYTES = 50 * 1024 * 1024
 NOT_LOADED = "Il catalogo delle offerte non è ancora disponibile. Riprova tra poco."
 NOT_LOADED_RESPONSES: dict[int | str, dict[str, Any]] = {
     503: {"model": ErrorResponse, "description": "Catalogue not loaded yet."}
@@ -185,88 +173,15 @@ def _month_str(d: date) -> str:
     return f"{d.year:04d}-{d.month:02d}"
 
 
+@lru_cache(maxsize=1)
+def _load_sample() -> SampleHousehold:
+    raw = resources.files("bestbill").joinpath("data/sample.json").read_text("utf-8")
+    return SampleHousehold.model_validate_json(raw)
+
+
 @router.get("/sample")
 def sample() -> SampleHousehold:
-    with resources.as_file(
-        resources.files("bestbill").joinpath("data/sample.xlsx")
-    ) as path:
-        profile, _, _ = read_location_data(path, SAMPLE_LOCATION)
-    return SampleHousehold(
-        location=SAMPLE_LOCATION,
-        description="Famiglia di esempio con dati sintetici (non reali).",
-        months=[
-            SampleMonth(month=_month_str(m.month), kwh=m.kwh) for m in profile.months
-        ],
-    )
-
-
-_PARSE_FORMAT_HELP = (
-    "Il file non è nel formato atteso: servono fogli 'Storico_<Località>' con "
-    "le colonne 'Mese', 'Consumo [kWh]', 'PUN mensile [€/kWh]' e "
-    "'FC PUN mensile [€/kWh]'."
-)
-
-
-def _check_xlsx(content: bytes) -> None:
-    """Content check: zip magic, sane zip, openpyxl can open it."""
-    if not content.startswith(b"PK\x03\x04"):
-        raise _field_error("file", "Il file non è un .xlsx valido.")
-    try:
-        with zipfile.ZipFile(io.BytesIO(content)) as zf:
-            infos = zf.infolist()
-            if (
-                len(infos) > MAX_ZIP_ENTRIES
-                or sum(i.file_size for i in infos) > MAX_UNCOMPRESSED_BYTES
-            ):
-                raise _field_error("file", "Il file .xlsx è troppo complesso.")
-        openpyxl.load_workbook(io.BytesIO(content), read_only=True).close()
-    except HTTPException:
-        raise
-    except Exception:
-        raise _field_error("file", "Il file non è un .xlsx valido.") from None
-
-
-@router.post(
-    "/parse",
-    responses={
-        413: {"model": ErrorResponse, "description": "Upload over 2 MB."},
-        422: {"model": ValidationErrorResponse},
-    },
-)
-def parse(
-    request: Request, file: Annotated[UploadFile, File(description=".xlsx, max 2 MB")]
-) -> ParseResult:
-    """Read a workbook in the legacy format. Nothing is stored."""
-    limit: int = request.app.state.settings.max_upload_bytes
-    content = file.file.read(limit + 1)
-    if len(content) > limit:
-        raise HTTPException(status_code=413, detail="Il file supera i 2 MB.")
-    _check_xlsx(content)
-
-    try:
-        locations = list_locations(io.BytesIO(content))
-    except ExcelFormatError:
-        raise _field_error("file", _PARSE_FORMAT_HELP) from None
-    profiles: list[ParsedProfile] = []
-    skipped: list[str] = []
-    for location in locations:
-        try:
-            profile, _, _ = read_location_data(io.BytesIO(content), location)
-        except (ExcelFormatError, ValidationError):
-            skipped.append(location)
-            continue
-        profiles.append(
-            ParsedProfile(
-                location=location,
-                months=[
-                    SampleMonth(month=_month_str(m.month), kwh=m.kwh)
-                    for m in profile.months
-                ],
-            )
-        )
-    if not profiles:
-        raise _field_error("file", _PARSE_FORMAT_HELP)
-    return ParseResult(profiles=profiles, skipped=skipped)
+    return _load_sample()
 
 
 def _fold(text: str) -> str:

@@ -6,7 +6,7 @@
 // ── Enums ──────────────────────────────────────────────────────────────────
 
 export type PriceType = 'fixed' | 'variable'
-export type OfferSource = 'placet' | 'mlibero' | 'custom'
+export type OfferSource = 'placet' | 'mlibero'
 export type BandStructure = 'mono' | 'f1f2f3' | 'f1f23'
 export type Residency = 'resident' | 'non_resident'
 
@@ -186,7 +186,6 @@ export interface ResultItem {
   break_even_status: BreakEvenStatus | null
   one_off_fee_eur: number
   conditional_discounts: Discount[]
-  dispatching_is_standard_estimate: boolean
   /** Contract / price-lock duration. null + duration_open_ended=false = unknown. May be missing on older API versions. */
   duration_months?: number | null
   duration_open_ended?: boolean

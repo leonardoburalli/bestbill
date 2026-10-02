@@ -126,19 +126,6 @@ class SampleHousehold(BaseModel):
     months: list[SampleMonth]
 
 
-class ParsedProfile(BaseModel):
-    location: str
-    months: list[SampleMonth]
-
-
-class ParseResult(BaseModel):
-    profiles: list[ParsedProfile]
-    skipped: list[str] = Field(
-        description="Locations found in the file but not usable (need 12 "
-        "consecutive months of non-negative kWh)."
-    )
-
-
 # -- compare -----------------------------------------------------------------
 class MonthInput(BaseModel):
     model_config = ConfigDict(extra="forbid")
@@ -300,7 +287,6 @@ class ResultItem(BaseModel):
     break_even_status: BreakEvenStatus | None
     one_off_fee_eur: float
     conditional_discounts: list[Discount]
-    dispatching_is_standard_estimate: bool
     duration_months: int | None = Field(
         default=None,
         description="Months the economic conditions are guaranteed; null when "

@@ -135,11 +135,7 @@ def create_app(
     app.add_middleware(
         BodyLimitMiddleware,
         default_limit=settings.max_compare_body_bytes,
-        path_limits={
-            "/api/compare": settings.max_compare_body_bytes,
-            # multipart framing overhead on top of the 2 MB file cap
-            "/api/parse": settings.max_upload_bytes + 64 * 1024,
-        },
+        path_limits={"/api/compare": settings.max_compare_body_bytes},
     )
     app.add_middleware(
         RateLimitMiddleware,

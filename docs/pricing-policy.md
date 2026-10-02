@@ -162,15 +162,3 @@ ARERA export; addresses and contact details are never stored (licence and
 data-minimisation decision, see PROVENANCE.md). On the real catalogue: 318
 of 319 mercato libero retailers resolve via **arera**; the remaining one
 (VAT `03882060712`) falls back to **domain** (`rubinoenergas.it`).
-
-## Custom offers vs. catalogue fairness (Phase 2, decided 2026-09-28)
-The legacy Excel ("custom") tariffs never carried a dispatching cost,
-which made them rank ~65 €/year unfairly cheaper than catalogue offers
-when compared side by side. With `--catalog`, `bestbill compare` ranks
-**catalogue offers only** by default; `--include-custom` adds the
-workbook's offers, each priced with the catalogue's **standard household
-dispatching** (`cdispd` €/kWh + `dispbt_d` €/year, from the PLACET
-parameters table — the same values `bestbill.arera.policy
-.placet_domestic_dispatching` uses for real PLACET offers), and flagged
-with `dispatching_is_standard_estimate=True` on the result for
-transparency.

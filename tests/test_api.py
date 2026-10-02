@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import io
 import logging
 
 import pytest
@@ -10,7 +9,7 @@ from bestbill.api.catalog_source import CatalogProvider, CatalogSettings
 from bestbill.api.main import create_app
 from bestbill.api.settings import Settings
 
-from .api_helpers import compare_body, xlsx_bytes
+from .api_helpers import compare_body
 
 
 def make_client(catalog_dir, **kwargs) -> TestClient:
@@ -167,117 +166,11 @@ def test_sample(client):
 
 
 def test_sample_round_trips_into_compare(client):
-    """The UI sends /api/sample (or /api/parse) months straight to /api/compare."""
+    """The UI sends /api/sample months straight to /api/compare."""
     months = client.get("/api/sample").json()["months"]
     r = client.post("/api/compare", json={"consumption": months, "top_n": 3})
     assert r.status_code == 200, r.text
     assert r.json()["results"]
-
-
-# -- parse -------------------------------------------------------------------
-def upload(client, content: bytes, name: str = "storico.xlsx"):
-    return client.post("/api/parse", files={"file": (name, io.BytesIO(content))})
-
-
-def test_parse_ok(client):
-    r = upload(client, xlsx_bytes("Milano", kwh=300))
-    assert r.status_code == 200
-    body = r.json()
-    assert body["skipped"] == []
-    prof = body["profiles"][0]
-    assert prof["location"] == "Milano"
-    assert prof["months"][0] == {"month": "2025-01", "kwh": 300.0}
-    assert len(prof["months"]) == 12
-
-
-def test_parse_sample_file(client):
-    from pathlib import Path
-
-    import bestbill
-
-    path = Path(bestbill.__file__).parent / "data" / "sample.xlsx"
-    r = upload(client, path.read_bytes())
-    assert r.status_code == 200
-    assert r.json()["profiles"][0]["location"] == "Esempio"
-
-
-def test_parse_skips_unusable_location(client):
-    import openpyxl
-
-    wb = openpyxl.load_workbook(io.BytesIO(xlsx_bytes("Ok")))
-    bad = wb.create_sheet("Storico_Corta")
-    bad.append(
-        ["Mese", "Consumo [kWh]", "PUN mensile [€/kWh]", "FC PUN mensile [€/kWh]"]
-    )
-    buf = io.BytesIO()
-    wb.save(buf)
-    body = upload(client, buf.getvalue()).json()
-    assert body["skipped"] == ["Corta"]
-    assert [p["location"] for p in body["profiles"]] == ["Ok"]
-
-
-def test_parse_rejects_not_xlsx(client):
-    r = upload(client, b"hello, this is not a spreadsheet")
-    assert r.status_code == 422
-    assert r.json()["detail"][0]["field"] == "file"
-
-
-def test_parse_rejects_zip_that_is_not_a_workbook(client):
-    import zipfile
-
-    buf = io.BytesIO()
-    with zipfile.ZipFile(buf, "w") as zf:
-        zf.writestr("a.txt", "x")
-    assert upload(client, buf.getvalue()).status_code == 422
-
-
-def test_parse_rejects_wrong_format(client):
-    import openpyxl
-
-    wb = openpyxl.Workbook()
-    wb.active.append(["a", "b"])
-    buf = io.BytesIO()
-    wb.save(buf)
-    r = upload(client, buf.getvalue())
-    assert r.status_code == 422
-    assert "Storico_" in r.json()["detail"][0]["message"]
-
-
-def test_parse_wrong_month_count_is_422(client):
-    r = upload(client, xlsx_bytes(months=5))
-    assert r.status_code == 422
-
-
-def test_parse_error_does_not_echo_values(client):
-    import openpyxl
-
-    wb = openpyxl.load_workbook(io.BytesIO(xlsx_bytes()))
-    ws = wb.active
-    ws["B2"] = "987654.321 kWh"
-    buf = io.BytesIO()
-    wb.save(buf)
-    r = upload(client, buf.getvalue())
-    assert r.status_code == 422
-    assert "987654" not in r.text
-
-
-def test_parse_missing_file(client):
-    r = client.post("/api/parse")
-    assert r.status_code == 422
-
-
-def test_parse_upload_too_large(catalog_dir):
-    with make_client(catalog_dir, max_upload_bytes=1000) as c:
-        r = upload(c, xlsx_bytes())
-    assert r.status_code == 413
-
-
-def test_parse_file_over_cap_inside_envelope(catalog_dir):
-    # Under the body-limit (cap + framing slack) but over the file cap.
-    with make_client(catalog_dir, max_upload_bytes=1000) as c:
-        r = upload(c, b"PK\x03\x04" + b"0" * 1500)
-    assert r.status_code == 413
-    assert "2 MB" in r.json()["detail"]
 
 
 # -- compare -----------------------------------------------------------------
