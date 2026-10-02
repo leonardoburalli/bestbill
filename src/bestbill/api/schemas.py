@@ -46,6 +46,7 @@ def parse_month(value: str) -> date:
 # -- health / meta -----------------------------------------------------------
 class Health(BaseModel):
     status: Literal["ok"] = "ok"
+    version: str
     catalog_loaded: bool
     snapshot_date: date | None = None
     catalog_age_days: int | None = None
