@@ -25,6 +25,7 @@ __all__ = [
     "DiscountValidity",
     "DiscountUnit",
     "Discount",
+    "AppliedDiscount",
     "ConsumptionTier",
     "SupplierNameSource",
     "BreakEvenStatus",
@@ -248,6 +249,16 @@ class Discount(BaseModel):
     #: Sconto/PeriodoValidita/DURATA, only ever observed on €/kWh
     #: discounts); ``None`` means the whole 12-month estimate window.
     duration_months: int | None = Field(default=None, ge=1)
+    #: Bonus paid in instalments (``EUR_ONE_OFF``/``EUR_YEAR`` only): the
+    #: description says the declared ``amount`` (the *total*) is paid in
+    #: ``instalment_amount_eur`` chunks every ``instalment_every_months``
+    #: over ``instalment_months`` months in total. ``None`` = not an
+    #: instalment bonus (the whole ``amount`` is credited in the estimate).
+    #: Only the instalments falling in the first 12 months are counted --
+    #: see ``bestbill.arera.policy.discount_annual_value_eur``.
+    instalment_months: int | None = Field(default=None, ge=1)
+    instalment_amount_eur: float | None = Field(default=None, gt=0)
+    instalment_every_months: int = Field(default=1, ge=1)
 
     @model_validator(mode="after")
     def _consumption_band_is_valid(self) -> Discount:
@@ -603,6 +614,23 @@ class Flat(BaseModel):
 Scenario = Annotated[Historical | Scaled | Flat, Field(discriminator="kind")]
 
 
+class AppliedDiscount(BaseModel):
+    """An unconditional discount actually counted in
+    ``CostBreakdown.discounts`` (``amount_in_estimate_eur > 0``).
+    ``declared_amount_eur`` is the advertised fixed-euro total (``None``
+    for percent and €/kWh discounts, which have no fixed total).
+    """
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    name: str
+    amount_in_estimate_eur: float
+    declared_amount_eur: float | None = None
+    unit: DiscountUnit
+    instalment_months: int | None = None
+    instalment_amount_eur: float | None = None
+
+
 class CostBreakdown(BaseModel):
     """Decomposition of an offer's ``cost_eur`` into its ARERA-policy
     parts. ``energy + fixed_fees + per_kwh_extras + power_fee +
@@ -662,6 +690,9 @@ class OfferResult(BaseModel):
     one_off_fee_eur: float = 0.0
     #: Conditional discounts kept for display only (not priced).
     conditional_discounts: list[Discount] = Field(default_factory=list)
+    #: Unconditional discounts counted in ``breakdown.discounts``; their
+    #: ``amount_in_estimate_eur`` sums to it.
+    applied_discounts: list[AppliedDiscount] = Field(default_factory=list)
     breakdown: CostBreakdown
     #: See ``Offer.duration_months`` / ``Offer.duration_open_ended``.
     duration_months: int | None = None

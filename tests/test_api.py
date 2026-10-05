@@ -715,3 +715,24 @@ def test_compare_after_discount_fields_present(client):
         assert (x["energy_discount_pct"] is None) == (
             x["energy_price_after_discounts_eur_kwh"] >= x["energy_price_eur_kwh"]
         )
+
+
+def test_compare_results_expose_applied_discounts(client):
+    results = _compare(client, top_n=200)["results"]
+    assert results
+    for item in results:
+        applied = item["applied_discounts"]
+        assert isinstance(applied, list)
+        assert sum(a["amount_in_estimate_eur"] for a in applied) == pytest.approx(
+            item["breakdown"]["discounts"], abs=0.01
+        )
+        for a in applied:
+            assert a["amount_in_estimate_eur"] > 0
+            assert set(a) == {
+                "name",
+                "amount_in_estimate_eur",
+                "declared_amount_eur",
+                "unit",
+                "instalment_months",
+                "instalment_amount_eur",
+            }

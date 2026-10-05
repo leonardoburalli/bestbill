@@ -31,6 +31,7 @@ Verified rules (see ``docs/pricing-policy.md``):
 
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass, field
 
 from bestbill.arera.codes import (
@@ -482,6 +483,178 @@ def discount_kwh_base(
     return max(0.0, min(kwh, upper) - lower)
 
 
+def instalments_value_in_first_12_months(discount: Discount) -> float:
+    """Euro value of a fixed-euro discount inside the 12-month estimate.
+
+    Without instalment info: the declared ``amount``. With instalments
+    (``instalment_months``/``instalment_amount_eur``/``instalment_every_months``):
+    instalment ``k`` is paid at the end of period ``k`` (month ``k * every``),
+    so ``12 // every`` instalments (at most the total count) fall in the
+    first 12 months: ``min(n × instalment_amount, declared total)``.
+    """
+    if discount.instalment_months is None or discount.instalment_amount_eur is None:
+        return discount.amount
+    every = discount.instalment_every_months
+    total_count = max(1, discount.instalment_months // every)
+    n_in_12 = min(total_count, 12 // every)
+    return min(n_in_12 * discount.instalment_amount_eur, discount.amount)
+
+
+_NUM = r"\d{1,3}(?:\.\d{3})+(?:,\d+)?|\d+(?:[.,]\d+)?"
+_MONEY = rf"(?:€\s*)?({_NUM})\s*(?:€|euro|eur)?"
+_PER_MONTHS = (
+    r"(?:per\s+un\s+totale\s+di|per\s+un\s+periodo\s+di|per|x)\s+"
+    r"(?:i\s+)?(?:primi\s+)?(\d+)\s*mesi"
+)
+_WORD_NUMBERS = {
+    "due": 2,
+    "tre": 3,
+    "quattro": 4,
+    "cinque": 5,
+    "sei": 6,
+    "sette": 7,
+    "otto": 8,
+    "nove": 9,
+    "dieci": 10,
+    "undici": 11,
+    "dodici": 12,
+}
+_CADENCE_ADJ = {
+    "mensili": 1,
+    "bimestrali": 2,
+    "trimestrali": 3,
+    "semestrali": 6,
+    "annuali": 12,
+}
+_COUNT = r"(\d+|" + "|".join(_WORD_NUMBERS) + r")"
+#: Each pattern yields (instalment amount, total months) -- cadence 1.
+_MONTHLY_PATTERNS = [
+    # "4,17 euro/mese per un totale di 36 mesi", "4 €/mese per 24 mesi"
+    re.compile(rf"{_MONEY}\s*(?:/|al\s+|ogni\s+)\s*mese\s+{_PER_MONTHS}"),
+    # "bonus mensile di 4 € per (i primi) 48 mesi"
+    re.compile(
+        rf"mensile\s+(?:di|pari\s+a|del\s+valore\s+di)\s+{_MONEY}\s+{_PER_MONTHS}"
+    ),
+    # "in quote mensili da 6 € per i primi 48 mesi"
+    re.compile(
+        rf"(?:quote|rate|tranche)\s+mensili\s+(?:da|di|pari\s+a)\s+{_MONEY}"
+        rf"(?:\s*ciascuna)?\s+{_PER_MONTHS}"
+    ),
+]
+#: "in 12 rate mensili da 5 €" -> (count, amount)
+_COUNTED_MONTHLY = re.compile(
+    rf"in\s+{_COUNT}\s+(?:quote|rate|tranche|bonus)\s+mensili\s+"
+    rf"(?:di\s+importo\s+pari\s+a\s+|da\s+|di\s+|pari\s+a\s+){_MONEY}"
+    r"|"
+    rf"in\s+{_COUNT}\s+(?:quote|rate|tranche)\s+"
+    rf"(?:di\s+importo\s+pari\s+a\s+|da\s+|di\s+|pari\s+a\s+){_MONEY}"
+    r"\s*(?:/|al\s+)\s*mese"
+)
+#: "suddiviso in N bonus (adj)? da X €" followed by an explicit cadence.
+_SPLIT = re.compile(
+    rf"suddivis\w*\s+in\s+{_COUNT}\s+(?:bonus|rate|quote|tranche)"
+    rf"(?:\s+(mensili|bimestrali|trimestrali|semestrali|annuali))?\s+"
+    rf"(?:di\s+importo\s+pari\s+a\s+|da\s+|di\s+|pari\s+a\s+){_MONEY}"
+    r"(.{0,80})"
+)
+_CADENCE_TAIL = re.compile(
+    r"ogni\s+(\d+)\s+mesi|(mensilmente|ogni\s+mese)|"
+    r"(annualmente|ogni\s+anno|una\s+volta\s+all'anno)"
+)
+
+
+@dataclass(frozen=True)
+class InstalmentInfo:
+    months: int
+    amount: float
+    every_months: int = 1
+
+
+def _num(raw: str) -> float:
+    if "," in raw:
+        return float(raw.replace(".", "").replace(",", "."))
+    if re.fullmatch(r"\d{1,3}(?:\.\d{3})+", raw):
+        return float(raw.replace(".", ""))
+    return float(raw)
+
+
+def _count(raw: str) -> int:
+    return int(raw) if raw.isdigit() else _WORD_NUMBERS[raw]
+
+
+def parse_instalments(description: str) -> InstalmentInfo | None:
+    """Parse an Italian bonus description for an instalment plan.
+
+    Returns ``(total months, amount per instalment, cadence in months)`` or
+    ``None`` when no explicit plan is found. Conservative on purpose: a
+    plan is only returned when both the per-instalment amount and the
+    cadence/duration are stated explicitly.
+    """
+    text = re.sub(r"\s+", " ", description.lower())
+    for pattern in _MONTHLY_PATTERNS:
+        m = pattern.search(text)
+        if m:
+            months = int(m.group(2))
+            if months >= 1:
+                return InstalmentInfo(months=months, amount=_num(m.group(1)))
+    m = _COUNTED_MONTHLY.search(text)
+    if m:
+        raw_count, raw_amount = (
+            (m.group(1), m.group(2)) if m.group(1) else (m.group(3), m.group(4))
+        )
+        count = _count(raw_count)
+        if count >= 1:
+            return InstalmentInfo(months=count, amount=_num(raw_amount))
+    m = _SPLIT.search(text)
+    if m:
+        count = _count(m.group(1))
+        every: int | None = _CADENCE_ADJ.get(m.group(2)) if m.group(2) else None
+        if every is None:
+            tail = _CADENCE_TAIL.search(m.group(4))
+            if tail:
+                every = (
+                    int(tail.group(1))
+                    if tail.group(1)
+                    else (1 if tail.group(2) else 12)
+                )
+        if every is not None and count >= 1 and every >= 1:
+            return InstalmentInfo(
+                months=count * every, amount=_num(m.group(3)), every_months=every
+            )
+    return None
+
+
+def resolve_instalments(
+    description: str,
+    unit: DiscountUnit,
+    nominal_amount: float,
+    amount_pre_vat: float,
+) -> InstalmentInfo | None:
+    """Instalment plan for a priced, unconditional fixed-euro discount, or
+    ``None`` (ambiguous / not spread beyond 12 months).
+
+    Only ``EUR_ONE_OFF`` and ``EUR_YEAR`` discounts qualify, the plan must
+    run past 12 months and ``instalment × count`` must match the declared
+    total (within max(1 €, 3 %)) so the declared amount really is the total
+    over the whole plan. The instalment amount is scaled by the same
+    VAT factor as the declared amount.
+    """
+    if unit not in (DiscountUnit.EUR_ONE_OFF, DiscountUnit.EUR_YEAR):
+        return None
+    info = parse_instalments(description)
+    if info is None or info.months <= 12 or nominal_amount <= 0:
+        return None
+    count = max(1, info.months // info.every_months)
+    if abs(info.amount * count - nominal_amount) > max(1.0, 0.03 * nominal_amount):
+        return None
+    factor = amount_pre_vat / nominal_amount
+    return InstalmentInfo(
+        months=info.months,
+        amount=round(info.amount * factor, 6),
+        every_months=info.every_months,
+    )
+
+
 def discount_annual_value_eur(
     discount: Discount,
     total_kwh: float,
@@ -500,7 +673,7 @@ def discount_annual_value_eur(
     if not discount_is_priced(discount.validity, discount.conditional):
         return 0.0
     if discount.unit in (DiscountUnit.EUR_YEAR, DiscountUnit.EUR_ONE_OFF):
-        return discount.amount
+        return instalments_value_in_first_12_months(discount)
     if discount.unit is DiscountUnit.EUR_KWH:
         return discount.amount * discount_kwh_base(discount, total_kwh, monthly_kwh)
     if discount.unit is DiscountUnit.PERCENT:

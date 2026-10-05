@@ -6,7 +6,8 @@
 # Usage: .cicd/publish-catalog.sh [--dry-run]   (or DRY_RUN=1)
 # The repo comes from `gh repo view`, overridable with BESTBILL_REPO.
 # Only catalog.sqlite, manifest.json and retailers.csv are uploaded; the raw
-# ARERA files under build/catalog/raw are never published.
+# ARERA files under build/catalog/raw and the local audit list
+# build/catalog/discount-review.csv are never published.
 # shellcheck source-path=SCRIPTDIR
 source "$(dirname "$0")/lib.sh"
 
@@ -59,6 +60,13 @@ ASSETS=("${OUT_DIR}/catalog.sqlite" "${OUT_DIR}/manifest.json")
 if [[ -f "${OUT_DIR}/retailers.csv" ]]; then
   ASSETS+=("${OUT_DIR}/retailers.csv")
 fi
+
+for asset in "${ASSETS[@]}"; do
+  if [[ "${asset}" == *discount-review.csv ]]; then
+    echo "error: discount-review.csv is local-only and must not be published" >&2
+    exit 1
+  fi
+done
 
 SNAPSHOT_DATE=$(jq -r '.snapshot_date' "${OUT_DIR}/manifest.json")
 INCLUDED=$(jq -r '.counts.included' "${OUT_DIR}/manifest.json")

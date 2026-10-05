@@ -116,6 +116,70 @@ export function formatDurationShort(item: DurationLike): string {
   return monthsLabel(d.months)
 }
 
+// ── Sconti inclusi nella stima ─────────────────────────────────────────────
+
+const eurFlex = new Intl.NumberFormat('it-IT', { style: 'currency', currency: 'EUR', useGrouping: 'always', minimumFractionDigits: 0, maximumFractionDigits: 2 })
+/** "150 €" for whole amounts, "4,17 €" otherwise. */
+const formatEurFlex = (n: number) => eurFlex.format(n)
+
+type AppliedLike = {
+  amount_in_estimate_eur: number
+  declared_amount_eur?: number | null
+  instalment_months?: number | null
+  instalment_amount_eur?: number | null
+}
+
+const isNum = (n: unknown): n is number => typeof n === 'number' && Number.isFinite(n)
+
+/** Number of instalments: declared total ÷ amount per instalment when it comes out (nearly) whole,
+ *  otherwise the months over which it is paid. Null when the discount is not paid in instalments. */
+export function instalmentCount(d: AppliedLike): number | null {
+  if (!isNum(d.instalment_months) || d.instalment_months <= 0) return null
+  if (isNum(d.declared_amount_eur) && isNum(d.instalment_amount_eur) && d.instalment_amount_eur > 0) {
+    const n = d.declared_amount_eur / d.instalment_amount_eur
+    if (Math.abs(n - Math.round(n)) <= 0.05 * n && Math.round(n) >= 1) return Math.round(n)
+  }
+  return Math.round(d.instalment_months)
+}
+
+/** "bonus 150 € in 36 rate, stimati i primi 12 mesi" – only for bonuses spread over more than 12 months. */
+export function longInstalmentNote(d: AppliedLike): string | null {
+  if (!isNum(d.instalment_months) || d.instalment_months <= 12) return null
+  const n = instalmentCount(d)
+  const bonus = isNum(d.declared_amount_eur) ? `bonus ${formatEurFlex(d.declared_amount_eur)}` : 'bonus'
+  return `${bonus} in ${n} rate, stimati i primi 12 mesi`
+}
+
+export interface DiscountsFlag {
+  /** Amount counted in the estimate, positive. */
+  amountEur: number
+  /** "Sconti inclusi: −50,04 € nei 12 mesi" */
+  text: string
+  /** One note per bonus spread over more than 12 months. */
+  notes: string[]
+}
+
+/** Compact flag shown next to the duration when the estimate includes discounts; null when it does not.
+ *  Works with older APIs that do not send applied_discounts (no notes then). */
+export function discountsFlag(item: {
+  breakdown?: { discounts?: number | null } | null
+  applied_discounts?: AppliedLike[] | null
+}): DiscountsFlag | null {
+  const total = item.breakdown?.discounts
+  if (!isNum(total) || !(Math.abs(total) > 0)) return null
+  const amountEur = Math.abs(total)
+  const notes = (item.applied_discounts ?? []).map(longInstalmentNote).filter((n): n is string => n !== null)
+  return { amountEur, text: `Sconti inclusi: −${eur.format(amountEur)} nei 12 mesi`, notes }
+}
+
+/** Details line for one applied discount: "pagato in 36 rate da 4,17 €" or null. */
+export function instalmentDetail(d: AppliedLike): string | null {
+  const n = instalmentCount(d)
+  if (n === null) return null
+  const each = isNum(d.instalment_amount_eur) ? ` da ${formatEurFlex(d.instalment_amount_eur)}` : ''
+  return `Pagato in ${n} ${n === 1 ? 'rata' : 'rate'}${each}`
+}
+
 /** CSV value: months as a number, otherwise "non specificata". */
 export function durationCsvValue(item: DurationLike): number | string {
   const d = durationInfo(item)
