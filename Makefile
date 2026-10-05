@@ -1,3 +1,9 @@
+# Ignore user/system uv config (e.g. a corporate package index): PyPI only,
+# as pinned in uv.lock. `make BESTBILL_UV_USER_CONFIG=1 ...` keeps yours.
+ifneq ($(BESTBILL_UV_USER_CONFIG),1)
+export UV_NO_CONFIG := 1
+endif
+
 .PHONY: install test lint check smoke frontend catalog catalog-publish openapi api-local frontend-dev
 
 install:
