@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import csv
 import hashlib
 import json
 import sqlite3
@@ -27,6 +28,7 @@ from bestbill.core.calculator import estimate_annual_cost
 from bestbill.core.models import (
     Band,
     ConsumptionProfile,
+    DiscountUnit,
     MonthlyConsumption,
     Offer,
     OfferSource,
@@ -102,6 +104,76 @@ class BuildResult:
     manifest_path: Path
     manifest: dict[str, Any]
     operators_csv_path: Path | None = None
+    #: Local-only audit list of fixed-euro discounts (never published).
+    discount_review_path: Path | None = None
+    discount_review_count: int = 0
+
+
+DISCOUNT_REVIEW_FILENAME = "discount-review.csv"
+_DISCOUNT_REVIEW_COLUMNS = [
+    "offer_id",
+    "name",
+    "supplier",
+    "discount_name",
+    "unit",
+    "declared_amount_eur",
+    "first_12_months_amount_eur",
+    "instalment_months",
+    "instalment_amount_eur",
+    "instalment_every_months",
+    "duration_months",
+    "text",
+]
+
+
+def discount_review_rows(offers: list[Offer]) -> list[dict[str, Any]]:
+    """Unconditional fixed-euro discounts on offers longer than 12 months or
+    with instalment info, with the amount the estimate actually credits."""
+    rows: list[dict[str, Any]] = []
+    for offer in offers:
+        long_offer = offer.duration_months is not None and offer.duration_months > 12
+        for d in offer.discounts:
+            if d.conditional or d.unit not in (
+                DiscountUnit.EUR_YEAR,
+                DiscountUnit.EUR_ONE_OFF,
+            ):
+                continue
+            if not (long_offer or d.instalment_months is not None):
+                continue
+            priced = policy.discount_is_priced(d.validity, d.conditional)
+            rows.append(
+                {
+                    "offer_id": offer.id,
+                    "name": offer.name,
+                    "supplier": offer.supplier,
+                    "discount_name": d.name,
+                    "unit": d.unit.value,
+                    "declared_amount_eur": round(d.amount, 2),
+                    "first_12_months_amount_eur": round(
+                        policy.instalments_value_in_first_12_months(d) if priced else 0,
+                        2,
+                    ),
+                    "instalment_months": d.instalment_months,
+                    "instalment_amount_eur": d.instalment_amount_eur,
+                    "instalment_every_months": (
+                        d.instalment_every_months
+                        if d.instalment_months is not None
+                        else None
+                    ),
+                    "duration_months": offer.duration_months,
+                    "text": " ".join(d.description.split())[:200],
+                }
+            )
+    return rows
+
+
+def write_discount_review(offers: list[Offer], path: Path) -> int:
+    rows = discount_review_rows(offers)
+    with path.open("w", newline="", encoding="utf-8") as fh:
+        writer = csv.DictWriter(fh, fieldnames=_DISCOUNT_REVIEW_COLUMNS)
+        writer.writeheader()
+        writer.writerows(rows)
+    return len(rows)
 
 
 def _reference_profile(pun: PunSeries) -> tuple[ConsumptionProfile, PunSeries]:
@@ -403,7 +475,12 @@ def build_catalog(
         json.dumps(manifest, indent=2, ensure_ascii=False), encoding="utf-8"
     )
 
+    review_path = out_dir / DISCOUNT_REVIEW_FILENAME
+    review_count = write_discount_review(priced_offers, review_path)
+
     return BuildResult(
+        discount_review_path=review_path,
+        discount_review_count=review_count,
         sqlite_path=sqlite_path,
         manifest_path=manifest_path,
         manifest=manifest,

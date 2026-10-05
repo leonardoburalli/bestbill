@@ -62,6 +62,36 @@ Codes declared by one offer are additive (no overlap by construction). Unit €/
 - Sconto/CODICE_COMPONENTE_FASCIA (per-band discount targeting) isn't
   implemented; a priced Sconto carrying it excludes the whole offer.
 
+## Bonuses paid in instalments
+Some bonuses are declared by ARERA as one-off (`UNITA_MISURA 05`, `VALIDITA 02`,
+no `DURATA`) while the description says they are paid in instalments over the
+whole contract (e.g. Agesp "Mia Fissa 36": 150 € = "4,17 euro/mese per un
+totale di 36 mesi"). Crediting the full total to the 12-month estimate overstates
+the saving.
+- Importer (`policy.parse_instalments` / `resolve_instalments`): for
+  unconditional, priced `eur_one_off` and `eur_year` discounts, the Italian
+  description is parsed for explicit plans: "X euro/mese (per un totale di|per)
+  N mesi", "bonus mensile di X € per (i primi) N mesi", "in quote mensili da X €
+  per (i primi) N mesi", "in N rate mensili da X €", "suddiviso in N bonus da X €"
+  **only with an explicit cadence** (mensile/annuale/ogni N mesi).
+- Conservative: no plan is stored unless it runs past 12 months and
+  `instalment × count` matches the declared total (within max(1 €, 3 %)).
+  Anything ambiguous ("entro sei mesi", "12% per i primi 6 mesi", "suddiviso in
+  3 bonus" with no cadence) is NOT spread.
+- Stored on `Discount`: `instalment_months` (total), `instalment_amount_eur`
+  (same VAT treatment as `amount`), `instalment_every_months` (default 1);
+  `amount` stays the declared total. Old catalogues without these keys load.
+- Calculator: instalment `k` is paid at month `k × every`, so
+  `12 // every` instalments fall in the first 12 months; the estimate credits
+  `min(n × instalment_amount, declared total)` (Mia Fissa 36: 12 × 4,17 =
+  50,04 €). `eur_year`, percent and €/kWh logic is unchanged otherwise.
+- API: `applied_discounts` on each result lists the unconditional discounts
+  counted in `breakdown.discounts` (`amount_in_estimate_eur`,
+  `declared_amount_eur`, `unit`, instalment fields); the amounts sum to it.
+- `bestbill catalog build` also writes `discount-review.csv` (local only, never
+  published) listing every unconditional fixed-€ discount on offers longer than
+  12 months or with instalment info, for manual review.
+
 ## After-discount energy price (display field)
 `energy_price_after_discounts_eur_kwh` = listed `energy_price_eur_kwh` minus the
 per-kWh value of the **unconditional, priced** discounts that act on the energy

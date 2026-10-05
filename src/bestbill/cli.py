@@ -109,6 +109,12 @@ def _run_catalog_build(args: argparse.Namespace) -> int:
         result.manifest["counts"]["included"],
         result.manifest["counts"]["excluded"],
     )
+    if result.discount_review_path is not None:
+        log.info(
+            "Discount review list (local only, not published): %d rows -> %s",
+            result.discount_review_count,
+            result.discount_review_path,
+        )
     validation = validate_catalog_dir(
         args.out, previous_manifest_path=args.previous_manifest
     )

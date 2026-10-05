@@ -1,5 +1,5 @@
 import { describeBreakEven } from '../lib/breakEven'
-import { ALL_IN_HINT, durationInfo, energyPriceText, energyPriceView, formatDate, formatDuration, formatEur, formatEurPerKwh } from '../lib/format'
+import { ALL_IN_HINT, discountsFlag, durationInfo, energyPriceText, energyPriceView, formatDate, formatDuration, formatEur, formatEurPerKwh, instalmentDetail, longInstalmentNote } from '../lib/format'
 import { normalizeOfferUrl } from '../lib/url'
 import type { Discount, OfferSource, PriceType, ResultItem } from '../types'
 import { ClockIcon, ExternalIcon } from './icons'
@@ -45,13 +45,28 @@ export function OfferBadges({ item }: { item: ResultItem }) {
 export function OfferDuration({ item, className = '' }: { item: ResultItem; className?: string }) {
   const d = durationInfo(item)
   const lock = d.kind === 'months' && item.price_type === 'fixed'
+  const flag = discountsFlag(item)
   return (
-    <p
-      className={`flex items-center gap-1.5 text-[0.8rem] leading-snug ${lock ? 'font-medium text-forest-dark' : 'text-ink-soft'} ${className}`}
-    >
-      <ClockIcon size={14} className="shrink-0" />
-      {formatDuration(item)}
-    </p>
+    <>
+      <p
+        className={`flex items-center gap-1.5 text-[0.8rem] leading-snug ${lock ? 'font-medium text-forest-dark' : 'text-ink-soft'} ${className}`}
+      >
+        <ClockIcon size={14} className="shrink-0" />
+        {formatDuration(item)}
+      </p>
+      {flag && (
+        <div className="mt-1.5 max-w-[26rem]">
+          <p className="inline-block rounded-md border border-amber-line bg-amber-soft px-2 py-0.5 text-[0.75rem] font-medium leading-snug text-amber-ink">
+            {flag.text}
+          </p>
+          {flag.notes.map((n) => (
+            <p key={n} className="mt-1 text-[0.75rem] leading-snug text-amber-ink">
+              {n}
+            </p>
+          ))}
+        </div>
+      )}
+    </>
   )
 }
 
@@ -116,6 +131,55 @@ function discountAmount(d: Discount): string {
   return `${n} ${d.unit}`.trim()
 }
 
+export function AppliedDiscounts({ item }: { item: ResultItem }) {
+  const applied = item.applied_discounts
+  const total = Math.abs(item.breakdown.discounts)
+  return (
+    <div>
+      <h4 className="text-sm font-semibold">Sconti applicati (già tolti dal costo)</h4>
+      {applied && applied.length > 0 ? (
+        <ul className="mt-1.5 space-y-2">
+          {applied.map((d, i) => {
+            const note = longInstalmentNote(d)
+            const rate = instalmentDetail(d)
+            const declaredDiffers =
+              d.declared_amount_eur !== null &&
+              d.declared_amount_eur !== undefined &&
+              Math.abs(d.declared_amount_eur - d.amount_in_estimate_eur) > 0.005
+            return (
+              <li key={d.name + i} className="rounded-lg border border-amber-line bg-amber-soft px-3 py-2">
+                <p className="font-medium">{d.name}</p>
+                <p className="mt-0.5 text-sm text-ink">
+                  Nella stima: <span className="tabular font-semibold">−{formatEur(d.amount_in_estimate_eur)}</span>
+                  {declaredDiffers && (
+                    <>
+                      {' '}· totale dichiarato: <span className="tabular">{formatEur(d.declared_amount_eur!)}</span>
+                    </>
+                  )}
+                </p>
+                {(rate || note) && (
+                  <p className="mt-0.5 text-sm text-amber-ink">
+                    {[rate, note ? note.charAt(0).toUpperCase() + note.slice(1) : null].filter(Boolean).join('. ')}.
+                  </p>
+                )}
+              </li>
+            )
+          })}
+        </ul>
+      ) : (
+        <p className="mt-1 leading-relaxed text-ink-soft">
+          Nella stima sono compresi sconti senza condizioni per {formatEur(total)} nei 12 mesi.
+        </p>
+      )}
+      {applied?.some((d) => instalmentDetail(d)) && (
+        <p className="mt-1.5 text-[0.8rem] text-ink-soft">
+          Per i bonus pagati a rate contiamo solo le rate dei primi 12 mesi.
+        </p>
+      )}
+    </div>
+  )
+}
+
 export function OfferDetails({ item, id }: { item: ResultItem; id: string }) {
   const b = item.breakdown
   return (
@@ -162,7 +226,14 @@ export function OfferDetails({ item, id }: { item: ResultItem; id: string }) {
                 : 'Il prezzo segue il mercato; questa è la durata delle condizioni indicate dal fornitore.'
               : 'Il fornitore non indica per quanto tempo valgono le condizioni: possono cambiare con un preavviso.'}
           </p>
+          {discountsFlag(item) && (
+            <p className="mt-2 inline-block rounded-md border border-amber-line bg-amber-soft px-2 py-0.5 text-[0.8rem] font-medium leading-snug text-amber-ink">
+              {discountsFlag(item)!.text}
+            </p>
+          )}
         </div>
+
+        {discountsFlag(item) && <AppliedDiscounts item={item} />}
 
         {describeBreakEven(item) && (
           <div>

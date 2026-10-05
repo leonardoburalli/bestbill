@@ -423,14 +423,27 @@ def _parse_discounts(
                     "Sconto/PeriodoValidita/DURATA non supportata per unità "
                     f"diversa da €/kWh: {discount_unit!r}"
                 )
+            amount_pre_vat = policy.discount_nominal_to_pre_vat(prezzo, iva_code)
+            instalments = (
+                policy.resolve_instalments(
+                    description, discount_unit, prezzo, amount_pre_vat
+                )
+                if would_be_priced
+                else None
+            )
             discounts.append(
                 Discount(
                     name=name,
                     description=description,
                     validity=validity,
                     conditional=conditional,
-                    amount=policy.discount_nominal_to_pre_vat(prezzo, iva_code),
+                    amount=amount_pre_vat,
                     unit=discount_unit,
+                    instalment_months=instalments.months if instalments else None,
+                    instalment_amount_eur=instalments.amount if instalments else None,
+                    instalment_every_months=(
+                        instalments.every_months if instalments else 1
+                    ),
                     applies_before_vat=True,
                     consumption_from_kwh=consumption_from_kwh,
                     consumption_to_kwh=consumption_to_kwh,

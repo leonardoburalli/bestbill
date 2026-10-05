@@ -11,6 +11,25 @@ with `schema_version` in `manifest.json` for its file format.
 
 ## [Unreleased]
 
+## [1.1.0] - 2026-10-05
+
+### Added
+- "Sconti inclusi" note next to each offer's duration whenever its estimate
+  includes discounts, and a "Sconti applicati" list in the offer details.
+- `applied_discounts` on each `/api/compare` result.
+- `discount-review.csv` written by every catalogue build (not published),
+  listing how fixed-€ bonuses were interpreted.
+
+### Fixed
+- Bonuses declared as one-off but paid in monthly instalments over the
+  contract (e.g. "4,17 euro/mese per 36 mesi") now count only the
+  instalments of the first 12 months in the estimate. Agesp/Acinque
+  "Mia Fissa 36" no longer get the full 150 € in year one.
+
+### Changed
+- The privacy note in the footer mentions Vercel Web Analytics (anonymous,
+  aggregate, no cookies).
+
 ## [1.0.1] - 2026-10-02
 
 ### Fixed
@@ -60,6 +79,7 @@ First public release.
   see `docs/deploy.md`.
 - CI for the Python package and the front end.
 
-[Unreleased]: https://github.com/leonardoburalli/bestbill/compare/v1.0.1...HEAD
+[Unreleased]: https://github.com/leonardoburalli/bestbill/compare/v1.1.0...HEAD
+[1.1.0]: https://github.com/leonardoburalli/bestbill/compare/v1.0.1...v1.1.0
 [1.0.1]: https://github.com/leonardoburalli/bestbill/compare/v1.0.0...v1.0.1
 [1.0.0]: https://github.com/leonardoburalli/bestbill/releases/tag/v1.0.0

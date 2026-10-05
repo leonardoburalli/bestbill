@@ -14,6 +14,7 @@ from pydantic import (
 )
 
 from bestbill.core.models import (
+    AppliedDiscount,
     Assumptions,
     Band,
     BandStructure,
@@ -288,6 +289,12 @@ class ResultItem(BaseModel):
     break_even_status: BreakEvenStatus | None
     one_off_fee_eur: float
     conditional_discounts: list[Discount]
+    applied_discounts: list[AppliedDiscount] = Field(
+        default_factory=list,
+        description="Unconditional discounts counted in breakdown.discounts "
+        "(amount_in_estimate_eur > 0); the amounts sum to it. Bonuses paid in "
+        "instalments only count the instalments falling in the first 12 months.",
+    )
     duration_months: int | None = Field(
         default=None,
         description="Months the economic conditions are guaranteed; null when "

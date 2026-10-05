@@ -54,7 +54,7 @@ export default function Footer({ meta }: { meta: CatalogMeta | null }) {
           </h2>
           <p>
             I consumi che inserisci vengono usati in memoria per fare il calcolo e non vengono salvati né
-            registrati. Il file CSV di Portale Consumi viene letto nel tuo browser e non lascia il tuo dispositivo. Il sito non usa cookie né strumenti di analisi e non richiede registrazione.
+            registrati. Il file CSV di Portale Consumi viene letto nel tuo browser e non lascia il tuo dispositivo. Il sito non usa cookie e non richiede registrazione. Per contare le visite usiamo Vercel Web Analytics, in forma anonima e aggregata: i tuoi consumi non vengono mai inviati né salvati.
           </p>
         </section>
       </div>

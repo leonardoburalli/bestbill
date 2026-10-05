@@ -154,6 +154,19 @@ export interface Discount {
   duration_months: number | null
 }
 
+/** An unconditional discount that is counted in breakdown.discounts. */
+export interface AppliedDiscount {
+  name: string
+  /** What is actually credited in the 12-month estimate (> 0). */
+  amount_in_estimate_eur: number
+  /** The total the supplier declares; null when it is not a fixed euro amount (e.g. a percentage). */
+  declared_amount_eur: number | null
+  unit: DiscountUnit
+  /** Set when the bonus is paid in instalments: total months over which it is paid. */
+  instalment_months: number | null
+  instalment_amount_eur: number | null
+}
+
 export type EnergyPriceKind = 'fixed' | 'pun_spread'
 
 export interface ResultItem {
@@ -186,6 +199,9 @@ export interface ResultItem {
   break_even_status: BreakEvenStatus | null
   one_off_fee_eur: number
   conditional_discounts: Discount[]
+  /** Unconditional discounts counted in breakdown.discounts. Missing on older API versions (unknown):
+   *  fall back to breakdown.discounts > 0. */
+  applied_discounts?: AppliedDiscount[]
   /** Contract / price-lock duration. null + duration_open_ended=false = unknown. May be missing on older API versions. */
   duration_months?: number | null
   duration_open_ended?: boolean

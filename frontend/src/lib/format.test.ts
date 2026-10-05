@@ -1,6 +1,44 @@
-import { energyPriceText, energyPriceView, formatDate, formatDuration, formatDurationShort, formatEnergyPrice, formatEur, formatEurCompact, formatEurPerKwh, formatKwh } from './format'
+import { discountsFlag, energyPriceText, energyPriceView, formatDate, formatDuration, formatDurationShort, formatEnergyPrice, formatEur, formatEurCompact, formatEurPerKwh, formatKwh, instalmentDetail, longInstalmentNote } from './format'
 
 const norm = (s: string) => s.replace(/[\u00a0\u202f]/g, ' ')
+
+const miaFissa = {
+  name: 'Bonus benvenuto',
+  amount_in_estimate_eur: 50.04,
+  declared_amount_eur: 150,
+  unit: 'eur_one_off' as const,
+  instalment_months: 36,
+  instalment_amount_eur: 4.17,
+}
+
+describe('discount flag', () => {
+  it('is null without discounts', () => {
+    expect(discountsFlag({ breakdown: { discounts: 0 } })).toBeNull()
+    expect(discountsFlag({})).toBeNull()
+  })
+  it('shows the amount in the 12-month estimate', () => {
+    const f = discountsFlag({ breakdown: { discounts: 50.04 }, applied_discounts: [{ ...miaFissa, instalment_months: null, instalment_amount_eur: null }] })
+    expect(norm(f!.text)).toBe('Sconti inclusi: −50,04 € nei 12 mesi')
+    expect(f!.notes).toEqual([])
+  })
+  it('falls back to breakdown.discounts when the API has no applied_discounts', () => {
+    const f = discountsFlag({ breakdown: { discounts: 30 } })
+    expect(norm(f!.text)).toBe('Sconti inclusi: −30,00 € nei 12 mesi')
+    expect(f!.notes).toEqual([])
+  })
+  it('adds a note for bonuses paid over more than 12 months', () => {
+    const f = discountsFlag({ breakdown: { discounts: 50.04 }, applied_discounts: [miaFissa] })
+    expect(f!.notes.map(norm)).toEqual(['bonus 150 € in 36 rate, stimati i primi 12 mesi'])
+  })
+  it('has no long-instalment note for 12 months or less', () => {
+    expect(longInstalmentNote({ ...miaFissa, instalment_months: 12 })).toBeNull()
+    expect(longInstalmentNote({ ...miaFissa, instalment_months: null })).toBeNull()
+  })
+  it('describes the instalments in details', () => {
+    expect(norm(instalmentDetail(miaFissa)!)).toBe('Pagato in 36 rate da 4,17 €')
+    expect(instalmentDetail({ ...miaFissa, instalment_months: null })).toBeNull()
+  })
+})
 
 describe('format', () => {
   it('formatEur', () => expect(norm(formatEur(1234.5))).toBe('1.234,50 €'))

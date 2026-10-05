@@ -8,6 +8,7 @@ from typing import Literal
 from bestbill.arera import policy
 from bestbill.core.bands import aggregate_to_structure, split_month_to_bands
 from bestbill.core.models import (
+    AppliedDiscount,
     Assumptions,
     BreakEvenStatus,
     Comparison,
@@ -331,7 +332,7 @@ def _offer_breakdown(
     months: list[date],
     total_kwh: float,
     committed_power_kw: float,
-) -> CostBreakdown:
+) -> tuple[CostBreakdown, list[AppliedDiscount]]:
     energy = _energy_cost(offer, monthly_band_kwh, pun_by_month, months)
     fixed_fees = offer.fixed_fee_eur_year + offer.dispatching_eur_year
     per_kwh_extras = total_kwh * offer.per_kwh_extras_eur
@@ -339,10 +340,22 @@ def _offer_breakdown(
     dispatching = total_kwh * offer.dispatching_eur_kwh
     one_off = offer.one_off_fee_eur
     monthly_kwh = [sum(band_kwh.values()) for band_kwh in monthly_band_kwh]
-    discounts = sum(
-        policy.discount_annual_value_eur(d, total_kwh, energy, monthly_kwh)
-        for d in _priced_discounts(offer)
-    )
+    applied: list[AppliedDiscount] = []
+    for d in _priced_discounts(offer):
+        value = policy.discount_annual_value_eur(d, total_kwh, energy, monthly_kwh)
+        if value > 0:
+            fixed = d.unit in (DiscountUnit.EUR_YEAR, DiscountUnit.EUR_ONE_OFF)
+            applied.append(
+                AppliedDiscount(
+                    name=d.name,
+                    amount_in_estimate_eur=value,
+                    declared_amount_eur=d.amount if fixed else None,
+                    unit=d.unit,
+                    instalment_months=d.instalment_months if fixed else None,
+                    instalment_amount_eur=d.instalment_amount_eur if fixed else None,
+                )
+            )
+    discounts = sum(a.amount_in_estimate_eur for a in applied)
     total = (
         energy
         + fixed_fees
@@ -361,7 +374,7 @@ def _offer_breakdown(
         one_off=one_off,
         discounts=discounts,
         total=total,
-    )
+    ), applied
 
 
 def _break_even_pun(
@@ -468,7 +481,7 @@ def estimate_annual_cost(
             return None
         pun_by_month = resolved[0]
 
-    breakdown = _offer_breakdown(
+    breakdown, _ = _offer_breakdown(
         offer, band_kwh, pun_by_month, months, total_kwh, committed_power_kw
     )
     return breakdown.total
@@ -545,7 +558,7 @@ def compare(
         for offer in eligible
     }
 
-    breakdowns: dict[str, CostBreakdown] = {
+    breakdown_and_applied = {
         offer.id: _offer_breakdown(
             offer,
             offer_band_kwh[offer.id],
@@ -556,6 +569,8 @@ def compare(
         )
         for offer in eligible
     }
+    breakdowns = {k: v[0] for k, v in breakdown_and_applied.items()}
+    applied_by_offer = {k: v[1] for k, v in breakdown_and_applied.items()}
     costs: dict[str, float] = {
         offer_id: breakdown.total for offer_id, breakdown in breakdowns.items()
     }
@@ -608,6 +623,7 @@ def compare(
                 break_even_status=break_even_status,
                 one_off_fee_eur=offer.one_off_fee_eur,
                 conditional_discounts=_conditional_discounts(offer),
+                applied_discounts=applied_by_offer[offer.id],
                 breakdown=breakdowns[offer.id],
                 duration_months=offer.duration_months,
                 duration_open_ended=offer.duration_open_ended,
