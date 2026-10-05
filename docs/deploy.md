@@ -139,6 +139,12 @@ While working, add each notable change to `## [Unreleased]` in
 
 ## Local development
 
+`make` targets and the `.cicd/` scripts set `UV_NO_CONFIG=1`, so uv ignores
+your user-level config (for example a corporate package index in
+`~/.config/uv/uv.toml`) and resolves from PyPI only, as pinned in `uv.lock`.
+For plain `uv run …` commands outside `make`, prefix them with
+`UV_NO_CONFIG=1`. To keep your own config, use `BESTBILL_UV_USER_CONFIG=1`.
+
 ```bash
 # API on a downloaded catalogue
 gh release download catalog-latest -D catalog-latest --clobber
