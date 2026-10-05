@@ -11,6 +11,8 @@ with `schema_version` in `manifest.json` for its file format.
 
 ## [Unreleased]
 
+## [1.1.0] - 2026-10-05
+
 ### Added
 - "Sconti inclusi" note next to each offer's duration whenever its estimate
   includes discounts, and a "Sconti applicati" list in the offer details.
@@ -77,6 +79,7 @@ First public release.
   see `docs/deploy.md`.
 - CI for the Python package and the front end.
 
-[Unreleased]: https://github.com/leonardoburalli/bestbill/compare/v1.0.1...HEAD
+[Unreleased]: https://github.com/leonardoburalli/bestbill/compare/v1.1.0...HEAD
+[1.1.0]: https://github.com/leonardoburalli/bestbill/compare/v1.0.1...v1.1.0
 [1.0.1]: https://github.com/leonardoburalli/bestbill/compare/v1.0.0...v1.0.1
 [1.0.0]: https://github.com/leonardoburalli/bestbill/releases/tag/v1.0.0
